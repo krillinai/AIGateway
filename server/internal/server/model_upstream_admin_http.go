@@ -208,14 +208,19 @@ func mountModelUpstreamAdminRoutes(admin *gin.RouterGroup, opts Options) {
 			return
 		}
 		var req struct {
-			ID string `json:"id"`
+			ID    string `json:"id"`
+			Model string `json:"model"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.ID) == "" {
 			modelUpstreamAdminBadRequest(c, errors.New("id is required"))
 			return
 		}
-		result, err := testModelUpstreamAccount(c.Request.Context(), store, opts.ModelCredentialCipher, strings.TrimSpace(req.ID))
+		result, err := testModelUpstreamAccount(c.Request.Context(), store, opts.ModelCredentialCipher, strings.TrimSpace(req.ID), req.Model)
 		if err != nil {
+			if errors.Is(err, errModelUpstreamProbeModelUnavailable) {
+				modelUpstreamAdminBadRequest(c, err)
+				return
+			}
 			modelUpstreamAdminError(c, err)
 			return
 		}
@@ -536,7 +541,9 @@ func fetchModelUpstreamModels(ctx context.Context, baseURL, apiKey string) ([]st
 	return parseUpstreamModelNames(body)
 }
 
-func testModelUpstreamAccount(ctx context.Context, store mcpgateway.ModelUpstreamStore, cipher mcpgateway.TokenCipher, id string) (gin.H, error) {
+var errModelUpstreamProbeModelUnavailable = errors.New("probe model is not configured on this account")
+
+func testModelUpstreamAccount(ctx context.Context, store mcpgateway.ModelUpstreamStore, cipher mcpgateway.TokenCipher, id, probeModel string) (gin.H, error) {
 	account, err := store.GetModelUpstreamAccount(ctx, id)
 	if err != nil {
 		return nil, err
@@ -552,12 +559,18 @@ func testModelUpstreamAccount(ctx context.Context, store mcpgateway.ModelUpstrea
 	if len(account.Models) == 0 {
 		return nil, errors.New("model upstream has no available models")
 	}
+	model := strings.TrimSpace(probeModel)
+	if model == "" {
+		model = account.Models[0]
+	} else if !containsModel(account.Models, model) {
+		return nil, errModelUpstreamProbeModelUnavailable
+	}
 	target, err := modelUpstreamURL(account.BaseURL, "/responses")
 	if err != nil {
 		return nil, err
 	}
 	payloadData := map[string]any{
-		"model": account.Models[0],
+		"model": model,
 		"input": []map[string]string{{
 			"role":    "user",
 			"content": "请只回复 OK",
@@ -594,7 +607,7 @@ func testModelUpstreamAccount(ctx context.Context, store mcpgateway.ModelUpstrea
 		return nil, err
 	}
 	return gin.H{
-		"model":      account.Models[0],
+		"model":      model,
 		"reply":      reply,
 		"latency_ms": time.Since(startedAt).Milliseconds(),
 	}, nil
