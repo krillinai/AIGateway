@@ -156,3 +156,52 @@ func TestModelUpstreamAdminTestAccountSendsHello(t *testing.T) {
 		t.Fatalf("authorization = %q", authorization)
 	}
 }
+
+func TestModelUpstreamAdminExplicitResponsesProbeModel(t *testing.T) {
+	var requestedModels []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode probe: %v", err)
+		}
+		requestedModels = append(requestedModels, request.Model)
+		if request.Model != "responses-chat" {
+			http.Error(w, "model does not support Responses", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"OK\"}\n\ndata: {\"type\":\"response.completed\"}\n\n"))
+	}))
+	defer upstream.Close()
+	store := mcpgateway.NewMemoryModelGroupStore()
+	router := newTestRouter(t, server.Options{
+		ModelCredentialCipher: mcpgateway.NewStaticTokenCipherForTest([]byte("0123456789abcdef0123456789abcdef")),
+		ModelUpstreamStore:    store,
+	})
+	account := doJSON(t, router, http.MethodPost, "/api/v1/admin/model-proxy/upstream-accounts", `{"name":"mixed catalog","base_url":"`+upstream.URL+`/v1","api_key":"fixture-key","synced_models":["embedding-first"],"manual_models":["responses-chat"],"status":"active"}`, nil, http.StatusCreated)
+	id := nestedString(t, account, "data", "id")
+	result := doJSON(t, router, http.MethodPost, "/api/v1/admin/model-proxy/upstream-accounts/test", `{"id":"`+id+`","model":"responses-chat"}`, nil, http.StatusOK)
+	data := result["data"].(map[string]any)
+	if data["model"] != "responses-chat" || data["reply"] != "OK" {
+		t.Fatalf("probe = %#v", data)
+	}
+	if len(requestedModels) != 1 || requestedModels[0] != "responses-chat" {
+		t.Fatalf("requests = %#v", requestedModels)
+	}
+	before := len(requestedModels)
+	doJSON(t, router, http.MethodPost, "/api/v1/admin/model-proxy/upstream-accounts/test", `{"id":"`+id+`","model":"not-configured"}`, nil, http.StatusBadRequest)
+	if len(requestedModels) != before {
+		t.Fatalf("invalid model triggered upstream request: %#v", requestedModels)
+	}
+	listed := doJSON(t, router, http.MethodGet, "/api/v1/admin/model-proxy/upstream-accounts", "", nil, http.StatusOK)
+	accounts := listed["data"].([]any)
+	if len(accounts) != 1 {
+		t.Fatalf("accounts = %#v", accounts)
+	}
+	models := accounts[0].(map[string]any)["models"].([]any)
+	if len(models) != 2 || models[0] != "embedding-first" || models[1] != "responses-chat" {
+		t.Fatalf("probe changed configured models: %#v", models)
+	}
+}
