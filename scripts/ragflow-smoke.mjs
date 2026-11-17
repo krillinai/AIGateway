@@ -28,21 +28,20 @@ async function loadConfig() {
   if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password || (url.pathname !== '/' && url.pathname !== '') || url.search || url.hash || /[?#]/.test(config.ragflow_base_url)) {
     throw controlledError('配置', 'ragflow_base_url 必须是无凭据、路径、查询串和片段的 HTTP(S) 根地址');
   }
-  if (typeof config.api_key_ref !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(config.api_key_ref)) {
-    throw controlledError('配置', 'api_key_ref 必须是专用 API Key 的环境变量名称');
-  }
-  const key = process.env[config.api_key_ref]?.trim();
-  if (!key) throw controlledError('配置', '专用 API Key 环境变量为空');
+  const reference = typeof config.api_key_ref === 'string' ? config.api_key_ref.trim() : '';
+  const key = reference.startsWith('ragflow-') ? reference : /^[A-Za-z_][A-Za-z0-9_]*$/.test(reference) ? process.env[reference]?.trim() : '';
+  if (!key) throw controlledError('配置', 'api_key_ref 必须填写 RAGFlow API Key 或已配置的环境变量名');
   if (config.embedding_model !== undefined && typeof config.embedding_model !== 'string') {
     throw controlledError('配置', 'embedding_model 必须是字符串');
   }
   return { baseURL: url.origin, key, embeddingModel: config.embedding_model?.trim() };
 }
 
-function documentStatus(run) {
-  if (['DONE', '3', 3].includes(run)) return 'ready';
-  if (['FAIL', '4', 4, 'CANCEL', '2', 2].includes(run)) return 'failed';
-  if (['UNSTART', '0', 0, 'RUNNING', '1', 1, 'SCHEDULE', '5', 5].includes(run)) return 'processing';
+function documentStatus(document) {
+  const run = Object.hasOwn(document, 'ingestion_status') ? document.ingestion_status : document.run;
+  if (['COMPLETED', 'DONE', '3', 3].includes(run)) return 'ready';
+  if (['FAILED', 'STOPPED', 'FAIL', '4', 4, 'CANCEL', '2', 2].includes(run)) return 'failed';
+  if (['CREATED', 'SCHEDULED', 'STOPPING', 'UNSTART', '0', 0, 'RUNNING', '1', 1, 'SCHEDULE', '5', 5].includes(run)) return 'processing';
   return 'unknown';
 }
 
@@ -96,7 +95,7 @@ async function main() {
       const query = new URLSearchParams({ id: documentID, page: '1', page_size: '100' });
       const data = await request('查询状态', 'GET', `${datasetPath}/documents?${query}`, undefined, Math.max(1, Math.min(30_000, remaining)));
       if (!Array.isArray(data?.docs) || data.docs.length !== 1 || data.docs[0]?.id !== documentID) throw controlledError('查询状态', '目标文档结构无效');
-      state = documentStatus(data.docs[0].run);
+      state = documentStatus(data.docs[0]);
       if (state === 'ready') break;
       if (state !== 'processing') throw controlledError('解析', `文档状态 ${state}`);
       await delay(Math.min(2000, Math.max(0, deadline - Date.now())));

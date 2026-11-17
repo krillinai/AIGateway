@@ -120,13 +120,13 @@ knowledge:
     rerank_id: ""
 ```
 
-真实 Key 只放在外部 `.env` 的 `RAGFLOW_API_KEY` 中，或由运行环境注入。`api_key_ref` 保存变量名称；没有明文 `api_key` 配置。`embedding_model` 为空时继承 RAGFlow 服务账号的默认模型，非空时填写已注册的完整 `model_name@model_factory`；`rerank_id` 为可选字段。RAGFlow 独立部署，使用 v1.0.0 HTTP API，不在 Gateway 启动时探测网络。
+`api_key_ref` 可直接填写以 `ragflow-` 开头的完整 Key，也可填写环境变量名称（默认 `RAGFLOW_API_KEY`），从外部 `.env` 或运行环境解析；未配置的环境变量会明确报错。真实 Key 仅放在仓库外运维配置中，没有新增 `api_key` 字段。`embedding_model` 为空时继承 RAGFlow 服务账号的默认模型，非空时填写已注册的完整 `model_name@model_factory`；`rerank_id` 为可选字段。RAGFlow 独立部署，使用 v1.0.0 HTTP API，不在 Gateway 启动时探测网络。
 
 | 配置覆盖变量 | 用途 |
 | --- | --- |
 | `CLAW_GATEWAY_KNOWLEDGE_PROVIDER_TYPE` | `bailian` 或 `ragflow` |
 | `CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_BASE_URL` | HTTP(S) 根服务地址，不能包含用户信息、额外路径、查询串或 fragment |
-| `CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_API_KEY_REF` | Key 环境变量名称，默认 `RAGFLOW_API_KEY` |
+| `CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_API_KEY_REF` | 完整 RAGFlow Key 或环境变量名称，默认 `RAGFLOW_API_KEY` |
 | `CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_EMBEDDING_MODEL` | 可选 Embedding 模型 |
 | `CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_RERANK_ID` | 可选 Reranker |
 

@@ -310,6 +310,33 @@ func TestRAGFlowDocumentStatuses(t *testing.T) {
 	}
 }
 
+func TestRAGFlowIngestionStatusesTakePrecedenceOverLegacyRun(t *testing.T) {
+	for _, test := range []struct {
+		value   string
+		status  DocumentStatus
+		message string
+	}{
+		{`"UNSTART"`, DocumentProcessing, ""}, {`"CREATED"`, DocumentProcessing, ""},
+		{`"SCHEDULED"`, DocumentProcessing, ""}, {`"RUNNING"`, DocumentProcessing, ""}, {`"STOPPING"`, DocumentProcessing, ""},
+		{`"COMPLETED"`, DocumentReady, ""}, {`"FAILED"`, DocumentFailed, "文档处理失败"}, {`"STOPPED"`, DocumentFailed, "文档处理已取消"},
+		{`"UNKNOWN"`, DocumentFailed, "无法识别文档处理状态"}, {`null`, DocumentFailed, "无法识别文档处理状态"},
+	} {
+		t.Run(test.value, func(t *testing.T) {
+			p := newTestRAGFlow(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("page") == "1" {
+					fmt.Fprintf(w, `{"code":0,"data":{"docs":[{"id":"doc","dataset_id":"dataset","ingestion_status":%s,"run":"DONE","latest_ingestion_event":{"message":"vendor-secret"}}]}}`, test.value)
+				} else {
+					io.WriteString(w, `{"code":0,"data":{"docs":[]}}`)
+				}
+			})
+			docs, err := p.ListDocuments(context.Background(), "dataset")
+			if err != nil || len(docs) != 1 || docs[0].Status != test.status || docs[0].ErrorMessage != test.message {
+				t.Fatalf("docs=%+v err=%v", docs, err)
+			}
+		})
+	}
+}
+
 func TestRAGFlowPaginationIsCompleteOrFails(t *testing.T) {
 	for _, mode := range []string{"完整", "重复页", "后页失败", "缺docs"} {
 		t.Run(mode, func(t *testing.T) {

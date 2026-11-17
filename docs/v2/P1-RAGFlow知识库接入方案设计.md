@@ -171,17 +171,17 @@ RAGFlow 可能为重名数据集添加编号，不能按名称判断请求幂等
 
 ### 4.4 文档状态映射
 
-| RAGFlow `run` 文本 / 数字 | Provider 状态 | Gateway 状态 |
+| RAGFlow `ingestion_status` / 旧版 `run` 文本或数字 | Provider 状态 | Gateway 状态 |
 | --- | --- | --- |
 | `UNSTART` / `0` | `DocumentProcessing` | `processing` |
-| `RUNNING` / `1` | `DocumentProcessing` | `processing` |
-| `SCHEDULE` / `5` | `DocumentProcessing` | `processing` |
-| `DONE` / `3` | `DocumentReady` | `ready` |
-| `FAIL` / `4` | `DocumentFailed` | `failed` |
-| `CANCEL` / `2` | `DocumentFailed` | `failed` |
+| `CREATED` / `RUNNING` / `STOPPING` / `1` | `DocumentProcessing` | `processing` |
+| `SCHEDULED` / `SCHEDULE` / `5` | `DocumentProcessing` | `processing` |
+| `COMPLETED` / `DONE` / `3` | `DocumentReady` | `ready` |
+| `FAILED` / `FAIL` / `4` | `DocumentFailed` | `failed` |
+| `STOPPED` / `CANCEL` / `2` | `DocumentFailed` | `failed` |
 | 其他或缺失 | `DocumentFailed` | `failed`，受控提示“无法识别文档处理状态” |
 
-DTO 解码同时接受文本、数字字符串及 JSON 数字，不使用隐式浮点转换掩盖非法值。`run` 是主要依据，不因 HTTP 200、上传成功或存在 `id` 就标记 ready。
+DTO 解码同时接受文本、数字字符串及 JSON 数字，不使用隐式浮点转换掩盖非法值。优先使用 `ingestion_status`，该字段不存在时兼容旧版 `run`；未知或空状态不能回退为 ready。不因 HTTP 200、上传成功或存在 `id` 就标记 ready。
 
 `progress_msg` 在官方示例中既有字符串也有数组，DTO 必须兼容；不将原始内容直接写入公开 API、审计或数据库错误文案。失败与取消分别使用固定中文说明，详细排查由 RAGFlow 运维日志完成。
 
@@ -241,11 +241,11 @@ RAGFlow 业务码 `102` 同时可能表示参数、缺失数据或“不拥有�
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
 | `base_url` | 空 | 启用 ragflow 时必填，根服务地址，不含 `/api/v1` |
-| `api_key_ref` | `RAGFLOW_API_KEY` | 保存环境变量名称，Key 从该环境变量解析 |
+| `api_key_ref` | `RAGFLOW_API_KEY` | 接受以 `ragflow-` 开头的完整 Key，或填写环境变量名称并从该变量解析 |
 | `embedding_model` | 空 | 空时不传，继承 RAGFlow 默认 Embedding |
 | `rerank_id` | 空 | 空时不显式指定 Reranker |
 
-P1 不增加明文 `api_key` 配置项；复用 `ResolveCredential`。`base_url` 允许 HTTP/HTTPS，以支持本机部署；拒绝用户信息、查询串、fragment 和额外路径，标准化末尾斜杠。地址仅接受部署者配置，不能由普通请求覆盖。HTTP client 禁止自动跟随重定向，避免携带 Key 转发到其他地址。
+P1 不增加 `api_key` 配置项；`api_key_ref` 以 `ragflow-` 开头时直接作为 Key，其余值按环境变量引用解析，缺失时失败且错误不回显配置值。真实 Key 仅放在仓库外运维配置中。`base_url` 允许 HTTP/HTTPS，以支持本机部署；拒绝用户信息、查询串、fragment 和额外路径，标准化末尾斜杠。地址仅接受部署者配置，不能由普通请求覆盖。HTTP client 禁止自动跟随重定向，避免携带 Key 转发到其他地址。
 
 在 `setDefaults`、环境变量绑定列表和配置测试中加入上述字段。对应变量为 `CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_BASE_URL`、`CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_API_KEY_REF`、`CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_EMBEDDING_MODEL` 和 `CLAW_GATEWAY_KNOWLEDGE_RAGFLOW_RERANK_ID`。
 

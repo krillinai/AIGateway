@@ -669,7 +669,7 @@ RAGFlow 独立运行，配置方式见 [配置说明](../../server/docs/getting-
 
 ### 10.1 显式隔离业务 smoke
 
-在仓库外创建权限受限的 JSON 配置，并将专用 Key 导出到 `api_key_ref` 指向的环境变量：
+在仓库外创建权限受限的 JSON 配置。`api_key_ref` 可直接填写以 `ragflow-` 开头的专用 Key，或填写已导出 Key 的环境变量名称：
 
 ```json
 {

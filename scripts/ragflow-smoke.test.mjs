@@ -18,13 +18,14 @@ async function runSmoke(configPath) {
   return { code, output };
 }
 
-for (const mode of ['成功', '解析失败', '清理失败']) {
+for (const mode of ['成功', '解析失败', '清理失败', '新版成功', '新版失败', '新版停止', '新版未知', '新版空状态']) {
   test(`RAGFlow smoke 使用隔离契约并精确清理：${mode}`, async t => {
     const directory = await mkdtemp(join(tmpdir(), 'ragflow-smoke-fixture-'));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const calls = [];
+    let statusQueries = 0;
     const server = createServer(async (req, res) => {
-      assert.equal(req.headers.authorization, 'Bearer fixture-key');
+      assert.equal(req.headers.authorization, mode.startsWith('新版') ? 'Bearer ragflow-fixture-key' : 'Bearer fixture-key');
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const raw = Buffer.concat(chunks).toString();
@@ -52,7 +53,9 @@ for (const mode of ['成功', '解析失败', '清理失败']) {
         respond([{ id: 'fixture-document' }]);
       } else if (url.pathname.endsWith('/documents')) {
         assert.equal(url.searchParams.get('id'), 'fixture-document');
-        respond({ docs: [{ id: 'fixture-document', run: 'DONE' }] });
+        const statuses = { 新版成功: 'COMPLETED', 新版失败: 'FAILED', 新版停止: 'STOPPED', 新版未知: 'UNKNOWN', 新版空状态: null };
+        const status = mode === '新版成功' && statusQueries++ === 0 ? 'CREATED' : statuses[mode];
+        respond({ docs: [{ id: 'fixture-document', run: 'DONE', ...(mode.startsWith('新版') ? { ingestion_status: status } : {}) }] });
       } else if (url.pathname === '/api/v1/retrieval') {
         const body = JSON.parse(raw);
         assert.deepEqual(body.dataset_ids, ['fixture-dataset']);
@@ -67,9 +70,9 @@ for (const mode of ['成功', '解析失败', '清理失败']) {
     await once(server, 'listening');
     t.after(() => { server.closeAllConnections(); server.close(); });
     const configPath = join(directory, 'smoke.json');
-    await writeFile(configPath, JSON.stringify({ disposable: true, ragflow_base_url: `http://127.0.0.1:${server.address().port}`, api_key_ref: 'RAGFLOW_FIXTURE_KEY' }), { mode: 0o600 });
+    await writeFile(configPath, JSON.stringify({ disposable: true, ragflow_base_url: `http://127.0.0.1:${server.address().port}`, api_key_ref: mode.startsWith('新版') ? ' ragflow-fixture-key ' : 'RAGFLOW_FIXTURE_KEY' }), { mode: 0o600 });
     const result = await runSmoke(configPath);
-    assert.equal(result.code, mode === '成功' ? 0 : 1, result.output);
+    assert.equal(result.code, ['成功', '新版成功'].includes(mode) ? 0 : 1, result.output);
     assert.equal(calls.filter(call => call.startsWith('DELETE')).length, 1);
     assert.equal(calls.at(-1), 'DELETE /api/v1/datasets');
     assert.doesNotMatch(result.output, /fixture-key|vendor-secret|报销期限/);
@@ -85,4 +88,17 @@ test('RAGFlow smoke 默认拒绝无隔离声明的配置', async t => {
   const result = await runSmoke(configPath);
   assert.equal(result.code, 1);
   assert.doesNotMatch(result.output, /fixture-key/);
+});
+
+test('RAGFlow smoke 拒绝缺失的环境变量或无效凭据且不回显配置值', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ragflow-smoke-credentials-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const configPath = join(directory, 'smoke.json');
+  for (const reference of ['RAGFLOW_MISSING_FIXTURE_KEY', 'opaque-fixture-token', null]) {
+    await writeFile(configPath, JSON.stringify({ disposable: true, ragflow_base_url: 'http://127.0.0.1:1', api_key_ref: reference }), { mode: 0o600 });
+    const result = await runSmoke(configPath);
+    assert.equal(result.code, 1);
+    assert.match(result.output, /配置无效或不可读取/);
+    if (reference) assert.ok(!result.output.includes(reference));
+  }
 });

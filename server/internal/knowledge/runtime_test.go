@@ -1,6 +1,10 @@
 package knowledge
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/krillinai/Clawee/server/internal/config"
@@ -71,5 +75,42 @@ func TestRAGFlowRuntimeResolvesOnlySelectedCredentialWithoutNetwork(t *testing.T
 	cfg.Enabled = false
 	if _, err := NewRuntime(cfg); err == nil || err.Error() != "knowledge is disabled" {
 		t.Fatalf("禁用时不应解析Key: %v", err)
+	}
+}
+
+func TestRAGFlowRuntimeAcceptsInlineAndReferencedKeys(t *testing.T) {
+	t.Setenv("FIXTURE_RAGFLOW_KEY", " fixture-key ")
+	for _, test := range []struct{ name, reference, key string }{
+		{"直接填写", " ragflow-fixture-key ", "ragflow-fixture-key"},
+		{"环境变量", " FIXTURE_RAGFLOW_KEY ", "fixture-key"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Authorization") != "Bearer "+test.key {
+					t.Error("未使用配置的 RAGFlow Key")
+				}
+				w.Write([]byte(`{"code":0,"data":{"docs":[]}}`))
+			}))
+			defer server.Close()
+			cfg := config.KnowledgeConfig{Enabled: true, ProviderType: ProviderRAGFlow, RAGFlow: config.RAGFlowConfig{BaseURL: server.URL, APIKeyRef: test.reference}}
+			runtime, err := NewRuntime(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := runtime.Provider.ListDocuments(context.Background(), "fixture-dataset"); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRAGFlowRuntimeCredentialErrorsDoNotExposeConfiguredValue(t *testing.T) {
+	t.Setenv("MISSING_RAGFLOW_KEY", "")
+	for _, reference := range []string{"MISSING_RAGFLOW_KEY", "opaque-secret-with-dashes"} {
+		cfg := config.KnowledgeConfig{Enabled: true, ProviderType: ProviderRAGFlow, RAGFlow: config.RAGFlowConfig{BaseURL: "http://127.0.0.1:1", APIKeyRef: reference}}
+		_, err := NewRuntime(cfg)
+		if err == nil || strings.Contains(err.Error(), reference) {
+			t.Fatal("缺失或无效凭据必须返回不包含配置值的错误")
+		}
 	}
 }

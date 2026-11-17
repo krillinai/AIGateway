@@ -235,7 +235,8 @@ type KnowledgeConfig struct {
 }
 
 type RAGFlowConfig struct {
-	BaseURL        string `mapstructure:"base_url"`
+	BaseURL string `mapstructure:"base_url"`
+	// APIKeyRef 接受以 ragflow- 开头的完整 Key，或环境变量名称。
 	APIKeyRef      string `mapstructure:"api_key_ref"`
 	EmbeddingModel string `mapstructure:"embedding_model"`
 	RerankID       string `mapstructure:"rerank_id"`

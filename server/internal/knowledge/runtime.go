@@ -25,7 +25,7 @@ func NewRuntime(cfg config.KnowledgeConfig, loggers ...*zap.Logger) (Runtime, er
 		return Runtime{}, err
 	}
 	if cfg.ProviderType == ProviderRAGFlow {
-		key, err := ResolveCredential(cfg.RAGFlow.APIKeyRef)
+		key, err := resolveRAGFlowCredential(cfg.RAGFlow.APIKeyRef)
 		if err != nil {
 			return Runtime{}, fmt.Errorf("解析 RAGFlow 凭据: %w", err)
 		}
@@ -69,6 +69,18 @@ func firstLogger(loggers []*zap.Logger) *zap.Logger {
 
 func ResolveCredential(reference string) (string, error) {
 	return resolveSecret(reference)
+}
+
+func resolveRAGFlowCredential(reference string) (string, error) {
+	reference = strings.TrimSpace(reference)
+	if strings.HasPrefix(reference, "ragflow-") {
+		return reference, nil
+	}
+	key, err := resolveSecret(reference)
+	if err != nil {
+		return "", fmt.Errorf("api_key_ref 必须填写 RAGFlow API Key 或已配置的环境变量名")
+	}
+	return key, nil
 }
 
 func ResolveConfiguredCredential(value, reference string) (string, error) {

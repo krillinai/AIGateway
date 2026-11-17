@@ -240,12 +240,13 @@ func (p *RAGFlowProvider) logUncertain(operation string, err error) {
 }
 
 type ragflowDocument struct {
-	ID          string          `json:"id"`
-	DatasetID   string          `json:"dataset_id"`
-	Name        string          `json:"name"`
-	Size        int64           `json:"size"`
-	Run         json.RawMessage `json:"run"`
-	ProgressMsg json.RawMessage `json:"progress_msg"`
+	ID              string          `json:"id"`
+	DatasetID       string          `json:"dataset_id"`
+	Name            string          `json:"name"`
+	Size            int64           `json:"size"`
+	IngestionStatus json.RawMessage `json:"ingestion_status"`
+	Run             json.RawMessage `json:"run"`
+	ProgressMsg     json.RawMessage `json:"progress_msg"`
 }
 
 func ragflowDocumentStatus(raw json.RawMessage) (DocumentStatus, string) {
@@ -256,13 +257,13 @@ func ragflowDocumentStatus(raw json.RawMessage) (DocumentStatus, string) {
 		}
 	}
 	switch value {
-	case "UNSTART", "0", "RUNNING", "1", "SCHEDULE", "5":
+	case "UNSTART", "0", "RUNNING", "1", "SCHEDULE", "5", "CREATED", "SCHEDULED", "STOPPING":
 		return DocumentProcessing, ""
-	case "DONE", "3":
+	case "DONE", "3", "COMPLETED":
 		return DocumentReady, ""
-	case "FAIL", "4":
+	case "FAIL", "4", "FAILED":
 		return DocumentFailed, "文档处理失败"
-	case "CANCEL", "2":
+	case "CANCEL", "2", "STOPPED":
 		return DocumentFailed, "文档处理已取消"
 	default:
 		return DocumentFailed, "无法识别文档处理状态"
@@ -301,7 +302,11 @@ func (p *RAGFlowProvider) ListDocuments(ctx context.Context, datasetID string) (
 			}
 			seen[doc.ID] = true
 			added++
-			status, message := ragflowDocumentStatus(doc.Run)
+			rawStatus := doc.IngestionStatus
+			if len(rawStatus) == 0 {
+				rawStatus = doc.Run
+			}
+			status, message := ragflowDocumentStatus(rawStatus)
 			items = append(items, ProviderDocument{ExternalID: doc.ID, Name: doc.Name, Size: doc.Size, Status: status, ErrorMessage: message})
 		}
 		if added == 0 {
