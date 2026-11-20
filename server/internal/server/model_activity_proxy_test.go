@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,68 @@ import (
 	"github.com/krillinai/Clawee/server/internal/clawadmin"
 	"github.com/krillinai/Clawee/server/internal/mcpgateway"
 )
+
+func TestModelActivityProxyNonStreamingContent(t *testing.T) {
+	message := map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": "Bearer abcdefghijklmnop"}}}
+	for _, tc := range []struct {
+		name, status, outputStatus string
+		large, disconnected        bool
+	}{
+		{"大响应", "completed", "available", true, false},
+		{"协议内部分输出", "incomplete", "partial", false, false},
+		{"协议内失败", "failed", "partial", false, false},
+		{"响应中断", "completed", "partial", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := []any{message}
+			if tc.large {
+				output = append(output, map[string]any{"type": "function_call", "arguments": strings.Repeat("x", 8<<20)})
+			}
+			body, err := json.Marshal(map[string]any{"status": tc.status, "output": output, "usage": map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.disconnected {
+				body = body[:strings.Index(string(body), `"usage":`)+len(`"usage":`)]
+			}
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if tc.disconnected {
+					w.Header().Set("Content-Length", strconv.Itoa(len(body)+100))
+				}
+				_, _ = w.Write(body)
+			}))
+			defer upstream.Close()
+			router, store := modelProxyTestRouter(t, fixedModelConfiguration{configuration: clawadmin.ModelConfiguration{
+				BaseURL: upstream.URL + "/v1", APIKey: "synthetic-upstream-key", Model: "test-model",
+			}})
+			req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"input":"测试"}`))
+			req.Header.Set("Authorization", "Bearer model-token")
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != 200 || rec.Body.String() != string(body) {
+				t.Fatalf("采集改变了转发响应: status=%d bytes=%d", rec.Code, rec.Body.Len())
+			}
+			page, err := store.ListModelActivityRecords(context.Background(), mcpgateway.ModelActivityFilter{Limit: 20})
+			if err != nil || len(page.Items) != 1 {
+				t.Fatalf("审计记录错误: count=%d err=%v", len(page.Items), err)
+			}
+			record := page.Items[0]
+			content := record.ActivityContent
+			if content.OutputText != "Bearer [REDACTED]" || content.OutputStatus != tc.outputStatus || content.OutputTruncated {
+				t.Fatalf("非流式内容错误: %+v", content)
+			}
+			if tc.disconnected {
+				if record.Status != mcpgateway.ModelProxyAuditFailed || record.ErrorCode != "upstream_error" {
+					t.Fatalf("中断审计状态错误: status=%q error=%q", record.Status, record.ErrorCode)
+				}
+			} else if record.Status != mcpgateway.ModelProxyAuditSucceeded || record.TotalTokens != 2 || record.UsageStatus != mcpgateway.ModelProxyUsageComplete {
+				t.Fatalf("原审计状态或用量被改变: status=%q tokens=%d usage=%q", record.Status, record.TotalTokens, record.UsageStatus)
+			}
+		})
+	}
+}
 
 func TestModelActivityProxyLifecycle(t *testing.T) {
 	const response = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Bearer abcdefghijklmnop\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n"

@@ -183,14 +183,6 @@ func (a *modelActivityCapture) setBlock(key modelActivityBlockKey, text string, 
 
 func (a *modelActivityCapture) Consume(chunk []byte) {
 	if !a.stream {
-		// JSON 响应使用独立缓冲，不依赖审计快照；超限不会影响转发。
-		const maxJSON = 8 << 20
-		remaining := maxJSON - len(a.pending)
-		if len(chunk) > remaining {
-			a.truncated = true
-			chunk = chunk[:remaining]
-		}
-		a.pending = append(a.pending, chunk...)
 		return
 	}
 	for _, b := range chunk {
@@ -305,25 +297,67 @@ func (a *modelActivityCapture) readResponseOutput(value map[string]any) {
 	}
 }
 
-func (a *modelActivityCapture) Finalize(content *mcpgateway.ModelActivityContent, transportOK bool) {
+// 逐项解码；后续 JSON 不完整时，仍返回已解码的字段和文本块。
+func decodeModelActivityJSONValue(decoder *json.Decoder, depth int) (any, error) {
+	// 与 encoding/json 的最大嵌套深度保持一致。
+	if depth > 10000 {
+		return nil, fmt.Errorf("JSON 嵌套层数过多")
+	}
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	switch token {
+	case json.Delim('{'):
+		value := make(map[string]any)
+		for decoder.More() {
+			key, err := decoder.Token()
+			if err != nil {
+				return value, err
+			}
+			field, err := decodeModelActivityJSONValue(decoder, depth+1)
+			value[key.(string)] = field
+			if err != nil {
+				return value, err
+			}
+		}
+		_, err := decoder.Token()
+		return value, err
+	case json.Delim('['):
+		value := make([]any, 0)
+		for decoder.More() {
+			item, err := decodeModelActivityJSONValue(decoder, depth+1)
+			value = append(value, item)
+			if err != nil {
+				return value, err
+			}
+		}
+		_, err := decoder.Token()
+		return value, err
+	default:
+		return token, nil
+	}
+}
+
+func (a *modelActivityCapture) Finalize(content *mcpgateway.ModelActivityContent, transportOK bool, responseJSON []byte) {
 	if content == nil {
 		return
 	}
 	if !a.stream {
-		var value map[string]any
-		if json.Unmarshal(a.pending, &value) == nil {
-			if a.responses {
-				a.readResponseOutput(value)
-			} else {
-				choices, _ := value["choices"].([]any)
-				if len(choices) > 0 {
-					choice, _ := choices[0].(map[string]any)
-					message, _ := choice["message"].(map[string]any)
-					a.setBlock(modelActivityBlockKey{}, readableActivityText(message["content"], "text"), false)
-				}
+		decoded, err := decodeModelActivityJSONValue(json.NewDecoder(bytes.NewReader(responseJSON)), 0)
+		value, _ := decoded.(map[string]any)
+		if a.responses {
+			a.readResponseOutput(value)
+			a.failed = value["status"] == "incomplete" || value["status"] == "failed"
+		} else {
+			choices, _ := value["choices"].([]any)
+			if len(choices) > 0 {
+				choice, _ := choices[0].(map[string]any)
+				message, _ := choice["message"].(map[string]any)
+				a.setBlock(modelActivityBlockKey{}, readableActivityText(message["content"], "text"), false)
 			}
-			a.ended = true
 		}
+		a.ended = err == nil && json.Valid(responseJSON)
 	}
 	keys := make([]modelActivityBlockKey, 0, len(a.blocks))
 	for key := range a.blocks {

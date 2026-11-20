@@ -63,6 +63,15 @@ func TestModelActivityInputAndCapture(t *testing.T) {
 	}{
 		{"ChatJSON", `{"choices":[{"message":{"role":"assistant","content":"你好"}}]}`, "你好", "available", false, false, true},
 		{"ResponsesJSON", `{"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"回答"}]}]}`, "回答", "available", false, true, true},
+		{"ResponsesJSON部分输出", `{"status":"incomplete","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"部分回答"}]}]}`, "部分回答", "partial", false, true, true},
+		{"ResponsesJSON失败输出", `{"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"部分回答"}]}],"status":"failed"}`, "部分回答", "partial", false, true, true},
+		{"ResponsesJSON失败无文本", `{"status":"failed","output":[]}`, "", "unavailable", false, true, true},
+		{"ResponsesJSON尾部断开", `{"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"已收到的文本"}]}],"usage":`, "已收到的文本", "partial", false, true, false},
+		{"ResponsesJSON文本块后断开", `{"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Bearer abcdefghijklmnop"},{"type":"output_text","text":"未收完`, "Bearer [REDACTED]", "partial", false, true, false},
+		{"ChatJSON消息中断开", `{"choices":[{"message":{"role":"assistant","content":"已收到的文本"`, "已收到的文本", "partial", false, false, false},
+		{"JSON缺少结尾", `{"choices":[{"message":{"content":"已收到的文本"}}]`, "已收到的文本", "partial", false, false, true},
+		{"JSON尾部非法", `{"choices":[{"message":{"content":"已收到的文本"}}]}invalid`, "已收到的文本", "partial", false, false, true},
+		{"JSON嵌套过深", `{"choices":[{"message":{"content":"已收到的文本"}}],"extra":` + strings.Repeat("[", 10001) + "0" + strings.Repeat("]", 10001) + "}", "已收到的文本", "partial", false, false, true},
 		{"ChatSSE", "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"你好\"}}]}\r\n\r\ndata: [DONE]\n\n", "你好", "available", true, false, true},
 		{"CR换行", "data: {\"choices\":[{\"delta\":{\"content\":\"答复\"}}]}\r\rdata: [DONE]\r\r", "答复", "available", true, false, true},
 		{"缺失终态", "data: {\"choices\":[{\"delta\":{\"content\":\"部分\"}}]}\n\n", "部分", "partial", true, false, true},
@@ -76,14 +85,16 @@ func TestModelActivityInputAndCapture(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, size := range []int{1, 7, 32768} {
 				capture := modelActivityCapture{stream: tc.stream, responses: tc.responses}
+				usage := modelProxyUsageAccumulator{jsonResponse: !tc.stream}
 				raw := []byte(tc.body)
 				for len(raw) > 0 {
 					n := min(size, len(raw))
+					usage.Consume(raw[:n])
 					capture.Consume(raw[:n])
 					raw = raw[n:]
 				}
 				content := mcpgateway.ModelActivityContent{}
-				capture.Finalize(&content, tc.transport)
+				capture.Finalize(&content, tc.transport, usage.pending)
 				if content.OutputText != tc.want || content.OutputStatus != tc.status {
 					t.Fatalf("size=%d content=%+v", size, content)
 				}
@@ -97,9 +108,42 @@ func TestModelActivityInputAndCapture(t *testing.T) {
 	capture := modelActivityCapture{stream: true}
 	capture.Consume([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"已取得\"}}]}\n\ndata: " + strings.Repeat("x", 65537) + "\n\ndata: [DONE]\n\n"))
 	content := mcpgateway.ModelActivityContent{}
-	capture.Finalize(&content, true)
+	capture.Finalize(&content, true, nil)
 	if content.OutputText != "已取得" || !content.OutputTruncated {
 		t.Fatalf("超限事件丢失已有文本: %+v", content)
+	}
+}
+
+func TestModelActivityLargeJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name, text, want string
+		largeTool        bool
+		truncated        bool
+	}{
+		{"大响应中的短文本", "短回答", "短回答", true, false},
+		{"超长文本保留摘录", strings.Repeat("中", (8<<20)/3+1), strings.Repeat("中", modelActivityTextLimit), false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := []any{map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": tc.text}}}}
+			if tc.largeTool {
+				output = append(output, map[string]any{"type": "function_call", "arguments": strings.Repeat("x", 8<<20)})
+			}
+			raw, err := json.Marshal(map[string]any{"status": "completed", "output": output})
+			if err != nil {
+				t.Fatal(err)
+			}
+			capture := modelActivityCapture{responses: true}
+			usage := modelProxyUsageAccumulator{jsonResponse: true}
+			for offset := 0; offset < len(raw); offset += 32768 {
+				usage.Consume(raw[offset:min(offset+32768, len(raw))])
+				capture.Consume(raw[offset:min(offset+32768, len(raw))])
+			}
+			content := mcpgateway.ModelActivityContent{}
+			capture.Finalize(&content, true, usage.pending)
+			if content.OutputText != tc.want || content.OutputStatus != "available" || content.OutputTruncated != tc.truncated {
+				t.Fatalf("大响应摘录错误: status=%q truncated=%v text_chars=%d", content.OutputStatus, content.OutputTruncated, utf8.RuneCountInString(content.OutputText))
+			}
+		})
 	}
 }
 

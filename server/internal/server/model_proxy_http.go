@@ -412,7 +412,8 @@ func forwardModelProxyResponse(c *gin.Context, opts Options, audit mcpgateway.Mo
 	}
 	activityCapture := modelActivityCapture{stream: !usageAccumulator.jsonResponse, responses: audit.Endpoint == "/v1/responses"}
 	finish := func(status mcpgateway.ModelProxyAuditStatus, gatewayStatus, upstreamStatus int, errorCode, errorMessage string, extraTruncated bool) {
-		activityCapture.Finalize(audit.ActivityContent, status == mcpgateway.ModelProxyAuditSucceeded)
+		// 非流式内容复用用量采集的完整响应缓冲，避免另存一份或依赖限长审计快照。
+		activityCapture.Finalize(audit.ActivityContent, status == mcpgateway.ModelProxyAuditSucceeded, usageAccumulator.pending)
 		usage := usageAccumulator.Finalize()
 		finalizeModelAuditWithUsage(opts, audit, status, gatewayStatus, upstreamStatus, errorCode, errorMessage, model, response.Header, captured.Bytes(), responseBytes, responseChunks, extraTruncated, &usage)
 	}
