@@ -263,6 +263,9 @@ func beginModelRequest(c *gin.Context, opts Options, requestBody []byte, model s
 		RequestBytes:      int64(len(requestBody)),
 		CreatedAt:         time.Now().UTC(),
 	}
+	if payload, err := decodeModelRequestBody(requestBody); err == nil && json.Valid(requestBody) {
+		bindModelActivity(c, opts, &audit, payload)
+	}
 	audit.RequestBody, audit.Truncated = snapshotModelProxyBody(requestBody)
 	if err := opts.ProxyGateway.Store().CreateModelProxyAuditRecord(c.Request.Context(), audit); err != nil {
 		writeModelError(c, http.StatusServiceUnavailable, "model_audit_unavailable", "Model audit is unavailable")
@@ -407,7 +410,9 @@ func forwardModelProxyResponse(c *gin.Context, opts Options, audit mcpgateway.Mo
 	usageAccumulator := modelProxyUsageAccumulator{
 		jsonResponse: !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream"),
 	}
+	activityCapture := modelActivityCapture{stream: !usageAccumulator.jsonResponse, responses: audit.Endpoint == "/v1/responses"}
 	finish := func(status mcpgateway.ModelProxyAuditStatus, gatewayStatus, upstreamStatus int, errorCode, errorMessage string, extraTruncated bool) {
+		activityCapture.Finalize(audit.ActivityContent, status == mcpgateway.ModelProxyAuditSucceeded)
 		usage := usageAccumulator.Finalize()
 		finalizeModelAuditWithUsage(opts, audit, status, gatewayStatus, upstreamStatus, errorCode, errorMessage, model, response.Header, captured.Bytes(), responseBytes, responseChunks, extraTruncated, &usage)
 	}
@@ -421,6 +426,7 @@ func forwardModelProxyResponse(c *gin.Context, opts Options, audit mcpgateway.Mo
 			responseBytes += int64(count)
 			responseChunks++
 			usageAccumulator.Consume(buffer[:count])
+			activityCapture.Consume(buffer[:count])
 			if captured.Len() < modelProxyAuditSnapshotLimit*2 {
 				remaining := modelProxyAuditSnapshotLimit*2 - captured.Len()
 				if count <= remaining {
@@ -540,7 +546,7 @@ func modelUpstreamURL(baseURL, path string) (string, error) {
 
 func copyModelProxyRequestHeaders(destination, source http.Header) {
 	for key, values := range source {
-		if hopByHopModelProxyHeader(key) || strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie") || strings.EqualFold(key, "Host") {
+		if strings.EqualFold(key, "X-Claw-Agent-ID") || strings.EqualFold(key, "X-Claw-Session-ID") || strings.EqualFold(key, "X-Claw-Turn-ID") || hopByHopModelProxyHeader(key) || strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie") || strings.EqualFold(key, "Host") {
 			continue
 		}
 		for _, value := range values {
@@ -563,6 +569,9 @@ func finalizeModelAudit(opts Options, record mcpgateway.ModelProxyAuditRecord, s
 }
 
 func finalizeModelAuditWithUsage(opts Options, record mcpgateway.ModelProxyAuditRecord, status mcpgateway.ModelProxyAuditStatus, gatewayStatus, upstreamStatus int, errorCode, errorMessage, model string, responseHeaders http.Header, responseRaw []byte, responseBytes, responseChunks int64, extraTruncated bool, usageOverride *modelProxyUsage) {
+	if record.ActivityContent != nil && record.ActivityContent.OutputStatus == "pending" {
+		record.ActivityContent.OutputStatus = "unavailable"
+	}
 	responseBody, responseTruncated := snapshotModelProxyBody(responseRaw)
 	usage := modelProxyUsage{}
 	if usageOverride != nil {
@@ -578,6 +587,7 @@ func finalizeModelAuditWithUsage(opts Options, record mcpgateway.ModelProxyAudit
 	completedAt := time.Now().UTC()
 	_, err := opts.ProxyGateway.Store().FinalizeModelProxyAuditRecord(context.Background(), mcpgateway.ModelProxyAuditFinalize{
 		AuditID:             record.AuditID,
+		ActivityContent:     record.ActivityContent,
 		Status:              status,
 		Model:               model,
 		RequestedModel:      record.RequestedModel,

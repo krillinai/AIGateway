@@ -279,6 +279,12 @@ func modelProxyTestRouter(t *testing.T, provider fixedModelConfiguration) (*gin.
 	}
 	accountService := accounts.NewService(accounts.Config{Store: accountStore})
 	store := mcpgateway.NewMemoryStore()
+	if err := accountStore.SaveAccountAgent(ctx, accounts.AccountAgent{UserID: "user_model", AgentID: "agent_model"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveAgent(ctx, mcpgateway.AgentRegistration{AgentID: "agent_model", Status: mcpgateway.StatusActive}); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.RotateAccountToken(ctx, "user_model", mcpgateway.AccountToken{
 		ID: "token_model", UserID: "user_model", TokenHash: mcpgateway.HashToken("model-token"), Status: mcpgateway.StatusActive,
 		Scopes: []string{mcpgateway.AccountTokenScopeMCPCall, mcpgateway.AccountTokenScopeModelCall}, Fingerprint: "fingerprint", CreatedAt: time.Now(), UpdatedAt: time.Now(),

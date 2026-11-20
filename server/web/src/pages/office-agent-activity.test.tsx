@@ -330,7 +330,7 @@ function renderWithQueryClient(node: React.ReactNode) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>{node}</MemoryRouter>
+      <MemoryRouter initialEntries={["/admin/activity?source=reported"]}>{node}</MemoryRouter>
     </QueryClientProvider>,
   );
 }

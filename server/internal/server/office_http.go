@@ -24,6 +24,7 @@ func mountOfficePublicRoutes(router *gin.Engine, opts Options) {
 }
 
 func mountOfficeAdminRoutes(admin *gin.RouterGroup, opts Options) {
+	mountModelActivityRoutes(admin, opts)
 	if opts.OfficeManagementAPI != nil {
 		admin.GET("/collectors", requirePermission(opts.RBACService, rbac.PermissionCollectorRead), wrapOfficeHandler(opts.OfficeManagementAPI.CollectorsHandler()))
 		admin.GET("/collectors/detail", requirePermission(opts.RBACService, rbac.PermissionCollectorRead), wrapOfficeHandler(opts.OfficeManagementAPI.CollectorDetailHandler()))

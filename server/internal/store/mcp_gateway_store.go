@@ -819,17 +819,17 @@ INSERT INTO model_proxy_audit_records (
 	 endpoint, method, model, requested_model, upstream_model, response_model, request_type, status, gateway_status, upstream_status, error_code, error_message,
 	 input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, usage_available, usage_status, usage_source, request_headers, request_body,
  response_headers, response_body, request_bytes, response_bytes, response_chunks, truncated,
-	 duration_ms, first_byte_ms, created_at, completed_at
+	 duration_ms, first_byte_ms, created_at, completed_at, agent_id, session_id, turn_id, activity_content
 ) VALUES (
 	 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-	 $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39
+	 $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43
 )`,
 		record.AuditID, record.RequestID, record.UserID, record.UserNameSnapshot, record.APIKeyID, record.APIKeyFingerprint,
 		record.Endpoint, record.Method, record.Model, record.RequestedModel, record.UpstreamModel, record.ResponseModel, record.RequestType, record.Status, record.GatewayStatus,
 		record.UpstreamStatus, record.ErrorCode, record.ErrorMessage, record.InputTokens, record.OutputTokens,
 		record.TotalTokens, record.CacheReadTokens, record.CacheCreationTokens, record.ReasoningTokens, record.UsageAvailable,
 		record.UsageStatus, record.UsageSource, requestHeaders, requestBody, responseHeaders, responseBody, record.RequestBytes, record.ResponseBytes, record.ResponseChunks, record.Truncated,
-		record.DurationMS, record.FirstByteMS, record.CreatedAt, record.CompletedAt,
+		record.DurationMS, record.FirstByteMS, record.CreatedAt, record.CompletedAt, record.AgentID, record.SessionID, record.TurnID, modelActivityContentJSON(record.ActivityContent),
 	)
 	return err
 }
@@ -873,13 +873,13 @@ SET model = CASE WHEN $2 = '' THEN model ELSE $2 END,
 	    input_tokens = $11, output_tokens = $12, total_tokens = $13, cache_read_tokens = $14,
 	    cache_creation_tokens = $15, reasoning_tokens = $16, usage_available = $17, usage_status = $18, usage_source = $19,
 	    response_headers = $20, response_body = $21, response_bytes = $22, response_chunks = $23,
-	    truncated = $24, duration_ms = $25, first_byte_ms = $26, completed_at = $27
+	    truncated = $24, duration_ms = $25, first_byte_ms = $26, completed_at = $27, activity_content = $29
 	WHERE audit_id = $1 AND status = $28`,
 		update.AuditID, update.Model, update.RequestedModel, update.UpstreamModel, update.ResponseModel, update.Status,
 		update.GatewayStatus, update.UpstreamStatus, update.ErrorCode, update.ErrorMessage, update.InputTokens, update.OutputTokens,
 		update.TotalTokens, update.CacheReadTokens, update.CacheCreationTokens, update.ReasoningTokens, update.UsageAvailable,
 		update.UsageStatus, update.UsageSource, responseHeaders, responseBody, update.ResponseBytes, update.ResponseChunks,
-		update.Truncated, update.DurationMS, update.FirstByteMS, update.CompletedAt, mcpgateway.ModelProxyAuditStarted,
+		update.Truncated, update.DurationMS, update.FirstByteMS, update.CompletedAt, mcpgateway.ModelProxyAuditStarted, modelActivityContentJSON(update.ActivityContent),
 	)
 	if err != nil {
 		return false, err
@@ -1015,7 +1015,7 @@ func modelProxyAuditSelectSQL() string {
 	 endpoint, method, model, requested_model, upstream_model, response_model, request_type, status, gateway_status, upstream_status, error_code, error_message,
 	 input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, usage_available, usage_status, usage_source, request_headers, request_body,
  response_headers, response_body, request_bytes, response_bytes, response_chunks, truncated,
-	 duration_ms, first_byte_ms, created_at, completed_at FROM model_proxy_audit_records`
+	 duration_ms, first_byte_ms, created_at, completed_at, agent_id, session_id, turn_id, activity_content FROM model_proxy_audit_records`
 }
 
 func (s *MCPGatewayStore) SaveGateRequest(ctx context.Context, gate mcpgateway.GateRequest) error {
@@ -1409,7 +1409,7 @@ func scanProxyAuditRecord(row rowScanner) (mcpgateway.ProxyAuditRecord, error) {
 
 func scanModelProxyAuditRecord(row rowScanner) (mcpgateway.ModelProxyAuditRecord, error) {
 	var record mcpgateway.ModelProxyAuditRecord
-	var requestHeaders, requestBody, responseHeaders, responseBody []byte
+	var requestHeaders, requestBody, responseHeaders, responseBody, activityContent []byte
 	var completedAt *time.Time
 	err := row.Scan(&record.AuditID, &record.RequestID, &record.UserID, &record.UserNameSnapshot,
 		&record.APIKeyID, &record.APIKeyFingerprint, &record.Endpoint, &record.Method, &record.Model,
@@ -1417,9 +1417,14 @@ func scanModelProxyAuditRecord(row rowScanner) (mcpgateway.ModelProxyAuditRecord
 		&record.ErrorCode, &record.ErrorMessage, &record.InputTokens, &record.OutputTokens, &record.TotalTokens, &record.CacheReadTokens,
 		&record.CacheCreationTokens, &record.ReasoningTokens, &record.UsageAvailable, &record.UsageStatus, &record.UsageSource,
 		&requestHeaders, &requestBody, &responseHeaders, &responseBody, &record.RequestBytes, &record.ResponseBytes,
-		&record.ResponseChunks, &record.Truncated, &record.DurationMS, &record.FirstByteMS, &record.CreatedAt, &completedAt)
+		&record.ResponseChunks, &record.Truncated, &record.DurationMS, &record.FirstByteMS, &record.CreatedAt, &completedAt, &record.AgentID, &record.SessionID, &record.TurnID, &activityContent)
 	if err != nil {
 		return mcpgateway.ModelProxyAuditRecord{}, err
+	}
+	if len(activityContent) > 0 {
+		if err := json.Unmarshal(activityContent, &record.ActivityContent); err != nil {
+			return record, err
+		}
 	}
 	record.RequestHeaders, err = unmarshalJSONMap(requestHeaders)
 	if err != nil {
@@ -1589,4 +1594,12 @@ func normalizeLimit(limit int) int {
 		return 200
 	}
 	return limit
+}
+
+func modelActivityContentJSON(content *mcpgateway.ModelActivityContent) []byte {
+	if content == nil {
+		return nil
+	}
+	data, _ := json.Marshal(content)
+	return data
 }

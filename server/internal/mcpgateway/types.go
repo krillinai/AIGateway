@@ -431,7 +431,21 @@ const (
 	ModelProxyUsageSourceUnavailable ModelProxyUsageSource = "unavailable"
 )
 
+type ModelActivityContent struct {
+	SchemaVersion   int    `json:"schema_version"`
+	InputText       string `json:"input_text"`
+	OutputText      string `json:"output_text"`
+	InputStatus     string `json:"input_status"`
+	OutputStatus    string `json:"output_status"`
+	InputTruncated  bool   `json:"input_truncated"`
+	OutputTruncated bool   `json:"output_truncated"`
+}
+
 type ModelProxyAuditRecord struct {
+	AgentID             string
+	SessionID           string
+	TurnID              string
+	ActivityContent     *ModelActivityContent
 	AuditID             string
 	RequestID           string
 	UserID              string
@@ -474,6 +488,7 @@ type ModelProxyAuditRecord struct {
 }
 
 type ModelProxyAuditFinalize struct {
+	ActivityContent     *ModelActivityContent
 	AuditID             string
 	Status              ModelProxyAuditStatus
 	Model               string

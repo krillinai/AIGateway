@@ -214,7 +214,7 @@ func sanitizeValue(key string, value any) any {
 	}
 	switch typed := value.(type) {
 	case string:
-		return redactText(typed)
+		return RedactText(typed)
 	case map[string]any:
 		clean := make(map[string]any, len(typed))
 		for childKey, child := range typed {
@@ -242,7 +242,8 @@ func isSecretKey(key string) bool {
 	}
 }
 
-func redactText(value string) string {
+// RedactText 复用客户端活动上报的文本脱敏规则。
+func RedactText(value string) string {
 	value = bearerPattern.ReplaceAllString(value, "Bearer [REDACTED]")
 	value = secretPattern.ReplaceAllStringFunc(value, func(match string) string {
 		separator := strings.IndexAny(match, ":=")

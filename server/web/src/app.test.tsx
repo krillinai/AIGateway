@@ -463,7 +463,7 @@ describe("App", () => {
   });
 
   it("renders the office agent activity route for admins", async () => {
-    window.history.pushState({}, "", "/admin/activity");
+    window.history.pushState({}, "", "/admin/activity?source=reported");
 
     renderApp();
 

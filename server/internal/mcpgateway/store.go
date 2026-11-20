@@ -735,6 +735,7 @@ func (s *MemoryStore) FinalizeModelProxyAuditRecord(ctx context.Context, update 
 	if record.UsageSource == "" {
 		record.UsageSource = ModelProxyAuditUsageSource(record)
 	}
+	record.ActivityContent = cloneModelActivityContent(update.ActivityContent)
 	record.ResponseHeaders = cloneJSONMap(update.ResponseHeaders)
 	record.ResponseBody = cloneJSONMap(update.ResponseBody)
 	record.ResponseBytes = update.ResponseBytes
@@ -1131,6 +1132,7 @@ func cloneProxyAuditRecord(record ProxyAuditRecord) ProxyAuditRecord {
 }
 
 func cloneModelProxyAuditRecord(record ModelProxyAuditRecord) ModelProxyAuditRecord {
+	record.ActivityContent = cloneModelActivityContent(record.ActivityContent)
 	record.RequestHeaders = cloneJSONMap(record.RequestHeaders)
 	record.RequestBody = cloneJSONMap(record.RequestBody)
 	record.ResponseHeaders = cloneJSONMap(record.ResponseHeaders)
@@ -1195,4 +1197,12 @@ func cloneJSONValue(value any) any {
 	default:
 		return typed
 	}
+}
+
+func cloneModelActivityContent(content *ModelActivityContent) *ModelActivityContent {
+	if content == nil {
+		return nil
+	}
+	copy := *content
+	return &copy
 }

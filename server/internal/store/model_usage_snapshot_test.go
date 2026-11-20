@@ -10,7 +10,7 @@ import (
 )
 
 func TestModelUsageSnapshotOnPostgres(t *testing.T) {
-	pool, _ := skillRoleTestDatabase(t, 87)
+	pool, _ := skillRoleTestDatabase(t, 91)
 	ctx := context.Background()
 	if _, err := pool.Exec(ctx, `INSERT INTO accounts(user_id,email,name,password_hash,status,created_at,updated_at) VALUES
 ('user-a','a@example.com','同名员工','unused','active',now(),now()),
