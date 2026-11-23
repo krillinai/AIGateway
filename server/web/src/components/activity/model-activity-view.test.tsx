@@ -59,6 +59,22 @@ it("游标翻页、精确筛选重置游标，详情只使用审计ID且纯文�
   expect(screen.getByText(/部分输出：/)).toBeInTheDocument();
   expect(screen.getByText(/最多保存 8000/)).toBeInTheDocument();
 });
+it("按会话归并轮次并支持分层收起", async () => {
+  const secondTurn = { ...request, audit_id: "audit-2", turn_id: "turn-2", input_preview: "第二轮请求", output_preview: "第二轮响应", created_at: new Date(Date.now() - 12 * 60_000).toISOString() };
+  const secondSession = { ...request, audit_id: "audit-3", session_id: "session-2", turn_id: "turn-3", input_preview: "另一个会话请求", output_preview: "另一个会话响应" };
+  vi.mocked(getModelRequests).mockResolvedValueOnce({ items: [request, secondTurn, secondSession], meta: { ...meta, limit: 20, next_created_at: null, next_id: "" } });
+
+  show("/admin/activity/detail?source=model_proxy&user_id=user&agent_id=agent", true);
+
+  expect(await screen.findByText("2 个轮次")).toBeInTheDocument();
+  expect(screen.getByText("当前页 3 次请求，已归并为 2 个会话")).toBeInTheDocument();
+  const secondTurnToggle = screen.getByRole("button", { name: /轮次 turn-2/ });
+  fireEvent.click(secondTurnToggle);
+  expect(await screen.findByText("第二轮请求")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /会话 session，2 个轮次/ }));
+  expect(screen.queryByText("第二轮请求")).not.toBeInTheDocument();
+});
 it("未关联调用不能按会话或轮次混合筛选", async () => {
   show("/admin/activity/detail?source=model_proxy&user_id=user&unattributed=true", true);
   await screen.findByText("输入预览");

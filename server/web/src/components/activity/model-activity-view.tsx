@@ -1,13 +1,16 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { ChevronDown, Layers3, MessageSquareText } from "lucide-react";
 import { DataTableShell, DetailDrawer, ErrorAlert, MetricCard, PageHeader, PageShell, TableStateRow } from "@/components/governance-ui";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useModelActivityOverview, useModelRequestDetail, useModelRequests } from "@/hooks/useModelActivity";
-import type { ModelActivityContent, ModelActivityFilter, ModelActivityStats, ModelRequest, ModelRequestCursor } from "@/lib/model-activity-api";
+import type { ModelActivityContent, ModelActivityFilter, ModelActivityStats, ModelRequest, ModelRequestCursor, ModelRequestPreview } from "@/lib/model-activity-api";
 
 const count = (value: number | null | undefined) => value == null ? "--" : value.toLocaleString();
 const date = (value: string | null) => value ? new Date(value).toLocaleString() : "--";
@@ -76,6 +79,7 @@ function ModelActivityRequests({ filter }: { filter: ModelActivityFilter }) {
   const auditId = params.get("audit_id") ?? "";
   const detail = useModelRequestDetail(auditId);
   const canFilter = Boolean(filter.user_id && (filter.client_type || filter.agent_id));
+  const sessionGroups = useMemo(() => groupRequestsBySession(query.data?.items ?? []), [query.data?.items]);
   function change(values: Record<string, string>) { const next = new URLSearchParams(params); Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key)); setParams(next); }
   function submit(event: FormEvent) { event.preventDefault(); change({ session_id: session.trim(), turn_id: session.trim() ? turn.trim() : "", audit_id: "" }); }
   return <PageShell>
@@ -83,17 +87,123 @@ function ModelActivityRequests({ filter }: { filter: ModelActivityFilter }) {
     <form onSubmit={submit} className="mb-4 flex flex-wrap items-end gap-3"><RangeSelect value={filter.range} onChange={(range) => change({ range })} /><div><Label htmlFor="model-session">会话 ID</Label><Input id="model-session" disabled={!canFilter} value={session} onChange={(event) => setSession(event.target.value)} /></div><div><Label htmlFor="model-turn">轮次 ID</Label><Input id="model-turn" disabled={!canFilter} value={turn} onChange={(event) => setTurn(event.target.value)} /></div><Button disabled={!canFilter} type="submit">精确筛选</Button><Button variant="outline" type="button" onClick={() => change({ session_id: "", turn_id: "", audit_id: "" })}>清除会话/轮次</Button></form>
     <p className="mb-3 text-sm text-muted-foreground">{turnNotice}</p>
     {query.isError ? <ErrorAlert error={query.error}>调用记录加载失败</ErrorAlert> : null}
-    <DataTableShell><Table><TableHeader><TableRow>{["时间 / 模型", "会话 / 轮次 ID", "状态", "Token / 耗时", "输入摘录 / 助手输出", "操作"].map((name) => <TableHead key={name}>{name}</TableHead>)}</TableRow></TableHeader><TableBody>
-      {query.isLoading ? <TableStateRow colSpan={6}>加载中</TableStateRow> : !query.isError && query.data?.items.length === 0 ? <TableStateRow colSpan={6}>当前范围无模型调用</TableStateRow> : query.data?.items.map((request) => <TableRow key={request.audit_id}>
-        <TableCell>{date(request.created_at)}<div>{request.model}</div></TableCell><TableCell className="max-w-64 break-all">{request.session_id || "--"}<div>{request.turn_id || "--"}</div></TableCell><TableCell>{requestStatus(request)}{request.error_code ? <div>{failureHints[request.error_code] ?? "模型调用失败"}（{request.error_code}）</div> : null}{request.output_status === "partial" ? <div>部分输出</div> : null}</TableCell>
-        <TableCell>{count(request.total_tokens)} / {count(request.duration_ms)} ms{request.usage_status !== "complete" ? <div>用量{request.usage_status === "partial" ? "部分可用" : "缺失"}</div> : null}</TableCell><TableCell className="max-w-80 whitespace-pre-wrap break-words">{request.input_preview || "用户输入摘录不可用"}<div>{request.output_preview || (request.output_status === "pending" ? "等待输出" : "本次无文本输出")}</div>{request.input_truncated || request.output_truncated ? <div>内容已截断</div> : null}</TableCell><TableCell><Button variant="outline" size="sm" onClick={() => change({ audit_id: request.audit_id })}>查看内容</Button></TableCell>
-      </TableRow>)}
-    </TableBody></Table></DataTableShell>
+    {query.isLoading ? <div className="rounded-md border border-border bg-card px-3 py-5 text-center text-sm text-muted-foreground">加载中</div> : null}
+    {!query.isLoading && !query.isError && query.data?.items.length === 0 ? <div className="rounded-md border border-border bg-card px-3 py-5 text-center text-sm text-muted-foreground">当前范围无模型调用</div> : null}
+    {!query.isLoading && !query.isError && query.data?.items.length ? <div className="grid min-w-0 gap-3" aria-label="按会话分组的模型调用">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Layers3 className="size-4" aria-hidden="true" />当前页 {query.data.items.length} 次请求，已归并为 {sessionGroups.length} 个会话</div>
+      {sessionGroups.map((group) => <SessionRequestGroup group={group} key={group.key} onOpen={(request) => change({ audit_id: request.audit_id })} />)}
+    </div> : null}
     <div className="mt-3 flex items-center gap-3"><Button variant="outline" disabled={cursors.length === 1 || query.isFetching} onClick={() => setCursors(cursors.slice(0, -1))}>上一页</Button><span>第 {cursors.length} 页</span><Button variant="outline" disabled={!query.data?.meta.next_id || query.isFetching} onClick={() => { if (query.data?.meta.next_created_at) setCursors([...cursors, { cursor_created_at: query.data.meta.next_created_at, cursor_id: query.data.meta.next_id }]); }}>下一页</Button></div>
     <DetailDrawer open={Boolean(auditId)} onClose={() => change({ audit_id: "" })} title="模型调用内容" subtitle="请求中的用户输入摘录和助手文本输出">
       {detail.isLoading ? <p>加载中</p> : detail.isError ? <ErrorAlert error={detail.error}>内容加载失败</ErrorAlert> : detail.data ? <div className="grid min-w-0 gap-4 text-sm"><p>{detail.data.user_name} · {detail.data.agent_name} · {requestStatus(detail.data)}</p><p>{detail.data.model} · {date(detail.data.created_at)}<br />Token：{count(detail.data.total_tokens)} · 耗时：{count(detail.data.duration_ms)} ms{detail.data.usage_status !== "complete" ? ` · 用量${detail.data.usage_status === "partial" ? "部分可用" : "缺失"}` : ""}</p><p className="break-all">客户端：{detail.data.client_type || "unknown"}<br />会话：{detail.data.session_id || "--"}<br />轮次：{detail.data.turn_id || "--"}</p>{detail.data.error_code ? <p>{failureHints[detail.data.error_code] ?? "模型调用失败"}（{detail.data.error_code}）</p> : null}<ActivityText content={detail.data.activity_content} input /><ActivityText content={detail.data.activity_content} /></div> : null}
     </DetailDrawer>
   </PageShell>;
+}
+
+type TurnRequestGroup = { key: string; turnId: string; requests: ModelRequestPreview[] };
+type SessionRequestGroup = { key: string; sessionId: string; turns: TurnRequestGroup[] };
+
+function groupRequestsBySession(requests: ModelRequestPreview[]): SessionRequestGroup[] {
+  const sessions = new Map<string, SessionRequestGroup>();
+  for (const request of requests) {
+    const sessionId = request.session_id || "";
+    const sessionKey = sessionId || "__unattributed_session__";
+    const session = sessions.get(sessionKey) ?? { key: sessionKey, sessionId, turns: [] };
+    const turnId = request.turn_id || "";
+    const turnKey = turnId || request.audit_id;
+    const turn = session.turns.find((item) => item.key === turnKey);
+    if (turn) turn.requests.push(request);
+    else session.turns.push({ key: turnKey, turnId, requests: [request] });
+    sessions.set(sessionKey, session);
+  }
+  return Array.from(sessions.values());
+}
+
+function SessionRequestGroup({ group, onOpen }: { group: SessionRequestGroup; onOpen(request: ModelRequestPreview): void }) {
+  const requestCount = group.turns.reduce((total, turn) => total + turn.requests.length, 0);
+  const totalTokens = sumKnownTokens(group.turns.flatMap((turn) => turn.requests));
+  const latestRequest = group.turns[0]?.requests[0];
+  return <Collapsible defaultOpen>
+    <section className="min-w-0 overflow-hidden rounded-md border border-border bg-card">
+      <CollapsibleTrigger asChild>
+        <Button aria-label={`${group.sessionId ? `会话 ${group.sessionId}` : "未关联会话"}，${group.turns.length} 个轮次，${requestCount} 次请求，展开或收起`} className="group h-auto w-full justify-start rounded-none px-4 py-3 text-left hover:bg-muted/40" variant="ghost">
+          <Layers3 className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-normal text-muted-foreground">会话</span>
+            <span className="block truncate font-mono text-sm font-semibold" title={group.sessionId || "未关联会话"}>{group.sessionId || "未关联会话"}</span>
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">最近调用 {latestRequest ? date(latestRequest.created_at) : "--"}</span>
+          </span>
+          <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <Badge variant="muted">{group.turns.length} 个轮次</Badge>
+            <Badge variant="muted">{requestCount} 次请求</Badge>
+            {totalTokens !== null ? <Badge variant="muted">{count(totalTokens)} Token</Badge> : null}
+          </span>
+          <ChevronDown className="ml-2 size-4 shrink-0 transition-transform motion-reduce:transition-none group-data-[state=open]:rotate-180" aria-hidden="true" />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-t border-border">
+        <div className="divide-y divide-border">
+          {group.turns.map((turn, index) => <TurnRequestGroupView group={turn} defaultOpen={index === 0} key={turn.key} onOpen={onOpen} />)}
+        </div>
+      </CollapsibleContent>
+    </section>
+  </Collapsible>;
+}
+
+function TurnRequestGroupView({ group, defaultOpen, onOpen }: { group: TurnRequestGroup; defaultOpen: boolean; onOpen(request: ModelRequestPreview): void }) {
+  const latestRequest = group.requests[0];
+  return <Collapsible defaultOpen={defaultOpen}>
+    <section className="min-w-0">
+      <CollapsibleTrigger asChild>
+        <Button aria-label={`${group.turnId ? `轮次 ${group.turnId}` : "未关联轮次"}，${group.requests.length} 次请求，展开或收起`} className="group h-auto w-full justify-start rounded-none px-4 py-2.5 text-left hover:bg-muted/30" variant="ghost">
+          <MessageSquareText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-normal text-muted-foreground">轮次</span>
+            <span className="block truncate font-mono text-xs font-semibold" title={group.turnId || "未关联轮次"}>{group.turnId || "未关联轮次"}</span>
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">{latestRequest ? date(latestRequest.created_at) : "--"}</span>
+          </span>
+          <Badge variant="muted">{group.requests.length} 次请求</Badge>
+          <ChevronDown className="ml-2 size-4 shrink-0 transition-transform motion-reduce:transition-none group-data-[state=open]:rotate-180" aria-hidden="true" />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="grid min-w-0 gap-2 bg-muted/20 p-3 sm:p-4">
+          {group.requests.map((request) => <ModelRequestItem key={request.audit_id} onOpen={() => onOpen(request)} request={request} />)}
+        </div>
+      </CollapsibleContent>
+    </section>
+  </Collapsible>;
+}
+
+function ModelRequestItem({ request, onOpen }: { request: ModelRequestPreview; onOpen(): void }) {
+  const statusVariant = request.status === "succeeded" ? "success" : request.status === "started" ? "warning" : request.status === "client_disconnected" ? "warning" : "danger";
+  return <article className="grid min-w-0 gap-3 border-b border-border px-3 py-3 last:border-b-0 sm:px-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+    <div className="grid min-w-0 gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span>{date(request.created_at)}</span>
+        <span className="font-medium text-foreground">{request.model}</span>
+        <Badge variant={statusVariant}>{requestStatus(request)}</Badge>
+        <span>{count(request.total_tokens)} Token</span>
+        <span>{count(request.duration_ms)} ms</span>
+      </div>
+      <div className="grid min-w-0 gap-2 text-sm md:grid-cols-2">
+        <div className="min-w-0"><div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground"><MessageSquareText className="size-3.5" aria-hidden="true" />请求</div><p className="whitespace-pre-wrap break-words leading-6">{request.input_preview || "用户输入摘录不可用"}</p></div>
+        <div className="min-w-0"><div className="mb-1 text-xs font-medium text-muted-foreground">响应</div><p className="whitespace-pre-wrap break-words leading-6">{request.output_preview || (request.output_status === "pending" ? "等待输出" : "本次无文本输出")}</p></div>
+      </div>
+      {request.error_code || request.output_status === "partial" || request.usage_status !== "complete" || request.input_truncated || request.output_truncated ? <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {request.error_code ? <span className="text-destructive">{failureHints[request.error_code] ?? "模型调用失败"}（{request.error_code}）</span> : null}
+        {request.output_status === "partial" ? <span>部分输出</span> : null}
+        {request.usage_status !== "complete" ? <span>用量{request.usage_status === "partial" ? "部分可用" : "缺失"}</span> : null}
+        {request.input_truncated || request.output_truncated ? <span>内容已截断</span> : null}
+      </div> : null}
+    </div>
+    <div className="flex items-start justify-end lg:pl-2"><Button variant="outline" size="sm" onClick={onOpen}>查看内容</Button></div>
+  </article>;
+}
+
+function sumKnownTokens(requests: ModelRequestPreview[]) {
+  const known = requests.filter((request) => request.total_tokens != null);
+  return known.length ? known.reduce((total, request) => total + (request.total_tokens ?? 0), 0) : null;
 }
 function ActivityText({ content, input = false }: { content: ModelActivityContent; input?: boolean }) {
   const text = input ? content.input_text : content.output_text;
