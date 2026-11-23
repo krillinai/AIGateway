@@ -25,8 +25,8 @@ function RangeSelect({ value, onChange }: { value: string; onChange(value: strin
 
 export function ModelActivityView({ detail = false }: { detail?: boolean }) {
   const [params, setParams] = useSearchParams();
-  const filter: ModelActivityFilter = { range: params.get("range") ?? "7d", user_id: params.get("user_id") ?? "", agent_id: params.get("agent_id") ?? "", unattributed: params.get("unattributed") === "true", session_id: params.get("session_id") ?? "", turn_id: params.get("turn_id") ?? "" };
-  return detail ? <ModelActivityRequests key={JSON.stringify(filter)} filter={filter} /> : <ModelActivityOverviewView key={JSON.stringify(filter)} filter={filter} onFilter={(next) => setParams({ source: "model_proxy", range: next.range, user_id: next.user_id ?? "", agent_id: next.agent_id ?? "", ...(next.unattributed ? { unattributed: "true" } : {}) })} />;
+  const filter: ModelActivityFilter = { range: params.get("range") ?? "7d", user_id: params.get("user_id") ?? "", client_type: params.get("client_type") ?? "", agent_id: params.get("agent_id") ?? "", unattributed: params.get("unattributed") === "true", session_id: params.get("session_id") ?? "", turn_id: params.get("turn_id") ?? "" };
+  return detail ? <ModelActivityRequests key={JSON.stringify(filter)} filter={filter} /> : <ModelActivityOverviewView key={JSON.stringify(filter)} filter={filter} onFilter={(next) => setParams({ source: "model_proxy", range: next.range, user_id: next.user_id ?? "", client_type: next.client_type ?? "", agent_id: next.agent_id ?? "", ...(next.unattributed ? { unattributed: "true" } : {}) })} />;
 }
 
 function ModelActivityOverviewView({ filter, onFilter }: { filter: ModelActivityFilter; onFilter(filter: ModelActivityFilter): void }) {
@@ -51,10 +51,10 @@ function ModelActivityOverviewView({ filter, onFilter }: { filter: ModelActivity
     </form>
     {query.isError ? <ErrorAlert error={query.error}>模型活动加载失败</ErrorAlert> : null}
     <p className="my-3 text-sm text-muted-foreground">{turnNotice}</p>
-    <DataTableShell><Table><TableHeader><TableRow>{["用户", "智能体", "请求数", "会话数", "交互轮次", "Token", "最近调用时间", "操作"].map((name) => <TableHead key={name}>{name}</TableHead>)}</TableRow></TableHeader><TableBody>
+    <DataTableShell><Table><TableHeader><TableRow>{["用户", "客户端 / 智能体", "请求数", "会话数", "交互轮次", "Token", "最近调用时间", "操作"].map((name) => <TableHead key={name}>{name}</TableHead>)}</TableRow></TableHeader><TableBody>
       {query.isLoading ? <TableStateRow colSpan={8}>加载中</TableStateRow> : !query.isError && query.data?.agents.length === 0 ? <TableStateRow colSpan={8}>当前范围无模型调用</TableStateRow> : query.data?.agents.map((agent) => {
-        const search = new URLSearchParams({ source: "model_proxy", range: filter.range, user_id: agent.user_id, ...(agent.agent_id ? { agent_id: agent.agent_id } : { unattributed: "true" }) });
-        return <TableRow key={`${agent.user_id}/${agent.agent_id}`}><TableCell>{agent.user_name}</TableCell><TableCell>{agent.agent_name}</TableCell><TableCell>{agent.request_count}</TableCell><TableCell>{agent.session_count}</TableCell><TableCell>{agent.turn_count}</TableCell><TableCell>{count(agent.total_tokens)}</TableCell><TableCell>{date(agent.last_request_at)}</TableCell><TableCell><Button asChild variant="outline" size="sm"><Link to={`/admin/activity/detail?${search}`}>查看调用</Link></Button></TableCell></TableRow>;
+        const search = new URLSearchParams({ source: "model_proxy", range: filter.range, user_id: agent.user_id, client_type: agent.client_type ?? "unknown", ...(agent.agent_id ? { agent_id: agent.agent_id } : { unattributed: "true" }) });
+        return <TableRow key={`${agent.user_id}/${agent.client_type ?? "unknown"}/${agent.agent_id}`}><TableCell>{agent.user_name}</TableCell><TableCell>{agent.agent_name}</TableCell><TableCell>{agent.request_count}</TableCell><TableCell>{agent.session_count}</TableCell><TableCell>{agent.turn_count}</TableCell><TableCell>{count(agent.total_tokens)}</TableCell><TableCell>{date(agent.last_request_at)}</TableCell><TableCell><Button asChild variant="outline" size="sm"><Link to={`/admin/activity/detail?${search}`}>查看调用</Link></Button></TableCell></TableRow>;
       })}
     </TableBody></Table></DataTableShell>
     <div className="mt-3 flex items-center gap-3"><Button variant="outline" disabled={page === 1 || query.isFetching} onClick={() => setPage(page - 1)}>上一页</Button><span>第 {page} 页 · 共 {query.data?.meta.total ?? 0} 行</span><Button variant="outline" disabled={!query.data || page * query.data.meta.page_size >= query.data.meta.total || query.isFetching} onClick={() => setPage(page + 1)}>下一页</Button></div>
@@ -75,7 +75,7 @@ function ModelActivityRequests({ filter }: { filter: ModelActivityFilter }) {
   const query = useModelRequests(filter, cursors[cursors.length - 1]);
   const auditId = params.get("audit_id") ?? "";
   const detail = useModelRequestDetail(auditId);
-  const canFilter = Boolean(filter.user_id && filter.agent_id);
+  const canFilter = Boolean(filter.user_id && (filter.client_type || filter.agent_id));
   function change(values: Record<string, string>) { const next = new URLSearchParams(params); Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key)); setParams(next); }
   function submit(event: FormEvent) { event.preventDefault(); change({ session_id: session.trim(), turn_id: session.trim() ? turn.trim() : "", audit_id: "" }); }
   return <PageShell>
@@ -91,7 +91,7 @@ function ModelActivityRequests({ filter }: { filter: ModelActivityFilter }) {
     </TableBody></Table></DataTableShell>
     <div className="mt-3 flex items-center gap-3"><Button variant="outline" disabled={cursors.length === 1 || query.isFetching} onClick={() => setCursors(cursors.slice(0, -1))}>上一页</Button><span>第 {cursors.length} 页</span><Button variant="outline" disabled={!query.data?.meta.next_id || query.isFetching} onClick={() => { if (query.data?.meta.next_created_at) setCursors([...cursors, { cursor_created_at: query.data.meta.next_created_at, cursor_id: query.data.meta.next_id }]); }}>下一页</Button></div>
     <DetailDrawer open={Boolean(auditId)} onClose={() => change({ audit_id: "" })} title="模型调用内容" subtitle="请求中的用户输入摘录和助手文本输出">
-      {detail.isLoading ? <p>加载中</p> : detail.isError ? <ErrorAlert error={detail.error}>内容加载失败</ErrorAlert> : detail.data ? <div className="grid min-w-0 gap-4 text-sm"><p>{detail.data.user_name} · {detail.data.agent_name} · {requestStatus(detail.data)}</p><p>{detail.data.model} · {date(detail.data.created_at)}<br />Token：{count(detail.data.total_tokens)} · 耗时：{count(detail.data.duration_ms)} ms{detail.data.usage_status !== "complete" ? ` · 用量${detail.data.usage_status === "partial" ? "部分可用" : "缺失"}` : ""}</p><p className="break-all">会话：{detail.data.session_id || "--"}<br />轮次：{detail.data.turn_id || "--"}</p>{detail.data.error_code ? <p>{failureHints[detail.data.error_code] ?? "模型调用失败"}（{detail.data.error_code}）</p> : null}<ActivityText content={detail.data.activity_content} input /><ActivityText content={detail.data.activity_content} /></div> : null}
+      {detail.isLoading ? <p>加载中</p> : detail.isError ? <ErrorAlert error={detail.error}>内容加载失败</ErrorAlert> : detail.data ? <div className="grid min-w-0 gap-4 text-sm"><p>{detail.data.user_name} · {detail.data.agent_name} · {requestStatus(detail.data)}</p><p>{detail.data.model} · {date(detail.data.created_at)}<br />Token：{count(detail.data.total_tokens)} · 耗时：{count(detail.data.duration_ms)} ms{detail.data.usage_status !== "complete" ? ` · 用量${detail.data.usage_status === "partial" ? "部分可用" : "缺失"}` : ""}</p><p className="break-all">客户端：{detail.data.client_type || "unknown"}<br />会话：{detail.data.session_id || "--"}<br />轮次：{detail.data.turn_id || "--"}</p>{detail.data.error_code ? <p>{failureHints[detail.data.error_code] ?? "模型调用失败"}（{detail.data.error_code}）</p> : null}<ActivityText content={detail.data.activity_content} input /><ActivityText content={detail.data.activity_content} /></div> : null}
     </DetailDrawer>
   </PageShell>;
 }

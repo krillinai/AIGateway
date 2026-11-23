@@ -441,10 +441,21 @@ type ModelActivityContent struct {
 	OutputTruncated bool   `json:"output_truncated"`
 }
 
+const (
+	ModelActivityClientUnknown = "unknown"
+	ModelActivityClientClawee  = "clawee_agent"
+	ModelActivityClientCodex   = "codex_cli"
+	ModelActivityClientClaude  = "claude_code"
+	ModelActivityClientGeneric = "generic"
+)
+
 type ModelProxyAuditRecord struct {
 	AgentID             string
+	ClientType          string
 	SessionID           string
+	SessionSource       string
 	TurnID              string
+	TurnSource          string
 	ActivityContent     *ModelActivityContent
 	AuditID             string
 	RequestID           string

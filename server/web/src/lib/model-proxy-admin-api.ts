@@ -14,6 +14,12 @@ type ModelProxyAuditResponse = {
   endpoint: string;
   method: string;
   model: string;
+  client_type?: string;
+  agent_id?: string;
+  session_id?: string;
+  session_source?: string;
+  turn_id?: string;
+  turn_source?: string;
   requested_model?: string;
   upstream_model?: string;
   response_model?: string;
@@ -98,6 +104,12 @@ export type ModelProxyAudit = {
   endpoint: string;
   method: string;
   model: string;
+  clientType?: string;
+  agentId?: string;
+  sessionId?: string;
+  sessionSource?: string;
+  turnId?: string;
+  turnSource?: string;
   requestedModel?: string;
   upstreamModel?: string;
   responseModel?: string;
@@ -168,6 +180,12 @@ function mapAudit(audit: ModelProxyAuditResponse): ModelProxyAudit {
     endpoint: audit.endpoint,
     method: audit.method,
     model: audit.model,
+    clientType: audit.client_type ?? "unknown",
+    agentId: audit.agent_id ?? "",
+    sessionId: audit.session_id ?? "",
+    sessionSource: audit.session_source ?? "",
+    turnId: audit.turn_id ?? "",
+    turnSource: audit.turn_source ?? "",
     requestedModel: audit.requested_model,
     upstreamModel: audit.upstream_model,
     responseModel: audit.response_model,

@@ -15,8 +15,8 @@ export type ModelActivityStats = {
   processing_count: number; stale_started_count: number;
   usage_complete_count: number; usage_partial_count: number; usage_unavailable_count: number;
 };
-export type ModelActivityAgent = ModelActivityStats & { user_id: string; user_name: string; agent_id: string; agent_name: string };
-export type ModelActivityFilter = { range: string; user_id?: string; agent_id?: string; unattributed?: boolean; session_id?: string; turn_id?: string };
+export type ModelActivityAgent = ModelActivityStats & { user_id: string; user_name: string; client_type?: string; agent_id: string; agent_name: string };
+export type ModelActivityFilter = { range: string; user_id?: string; client_type?: string; agent_id?: string; unattributed?: boolean; session_id?: string; turn_id?: string };
 export type ModelActivityMeta = { source: "model_proxy"; schema_version: 1; range: string; timezone: string; start: string; end: string };
 export type ModelActivityOverview = {
   summary: ModelActivityStats & { active_users: number; active_agents: number };
@@ -24,8 +24,8 @@ export type ModelActivityOverview = {
   meta: ModelActivityMeta & { page: number; page_size: number; total: number };
 };
 export type ModelRequest = {
-  audit_id: string; user_id: string; user_name: string; agent_id: string; agent_name: string;
-  session_id: string; turn_id: string; model: string; created_at: string; completed_at: string | null;
+  audit_id: string; user_id: string; user_name: string; client_type?: string; agent_id: string; agent_name: string;
+  session_id: string; session_source?: string; turn_id: string; turn_source?: string; model: string; created_at: string; completed_at: string | null;
   status: string; error_code: string; total_tokens: number | null;
   usage_status: "complete" | "partial" | "unavailable"; duration_ms: number | null;
 };

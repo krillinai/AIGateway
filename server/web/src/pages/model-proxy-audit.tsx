@@ -331,6 +331,10 @@ function ModelAuditDrawer({ audit, onClose }: { audit: ModelProxyAudit | null; o
                   { label: "api_key_fingerprint", value: audit.apiKeyFingerprint || "-" },
                   { label: "endpoint", value: audit.endpoint },
                   { label: "model", value: audit.model || "-" },
+                  { label: "client_type", value: audit.clientType || "unknown" },
+                  { label: "agent_id", value: audit.agentId || "-" },
+                  { label: "session_id", value: audit.sessionId || "-" },
+                  { label: "turn_id", value: audit.turnId || "-" },
                   { label: "requested_model", value: audit.requestedModel || "-" },
                   { label: "upstream_model", value: audit.upstreamModel || "-" },
                   { label: "response_model", value: audit.responseModel || "-" },
@@ -347,6 +351,7 @@ function ModelAuditDrawer({ audit, onClose }: { audit: ModelProxyAudit | null; o
                   { label: "request_bytes", value: audit.requestBytes },
                   { label: "response_bytes", value: audit.responseBytes },
                   { label: "response_chunks", value: audit.responseChunks },
+                  { label: "snapshot", value: audit.truncated ? "已截断，详情包含可用前缀" : "完整" },
                   { label: "created_at", value: formatDateTime(audit.createdAt) },
                   { label: "completed_at", value: audit.completedAt ? formatDateTime(audit.completedAt) : "-" }
                 ]}

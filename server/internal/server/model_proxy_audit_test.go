@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,6 +90,33 @@ func TestSanitizeModelProxyJSONRedactsMediaAndSecrets(t *testing.T) {
 	}
 	if !ok || media["media_type"] != "image/png" || media["bytes"] != 2 || media["sha256"] == "" {
 		t.Fatalf("media snapshot = %#v", snapshot["image_url"])
+	}
+}
+
+func TestSnapshotModelProxyBodyKeepsPrefixWhenOversized(t *testing.T) {
+	raw := []byte(`{"content":"` + strings.Repeat("x", modelProxyAuditSnapshotLimit+100) + `"}`)
+	snapshot, truncated := snapshotModelProxyBody(raw)
+	if !truncated || snapshot["prefix"] == nil || snapshot["bytes"] != len(raw) {
+		t.Fatalf("大请求快照未保留前缀: truncated=%v snapshot=%#v", truncated, snapshot)
+	}
+}
+
+func TestSnapshotModelProxySSEKeepsSanitizedEvents(t *testing.T) {
+	raw := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n")
+	snapshot, truncated := snapshotModelProxySSE(raw)
+	if truncated || snapshot["content_type"] != "text/event-stream" {
+		t.Fatalf("SSE 快照错误: truncated=%v snapshot=%#v", truncated, snapshot)
+	}
+	events, ok := snapshot["events"].([]any)
+	if !ok || len(events) != 2 {
+		t.Fatalf("SSE 事件未保存: %#v", snapshot)
+	}
+}
+
+func TestSnapshotModelProxyBodyRedactsParseErrorPrefix(t *testing.T) {
+	snapshot, truncated := snapshotModelProxyBody([]byte(`{"api_key":"sk-secret-value",`))
+	if !truncated || snapshot["prefix"] == "" || strings.Contains(snapshot["prefix"].(string), "sk-secret-value") {
+		t.Fatalf("解析失败前缀未脱敏: %#v", snapshot)
 	}
 }
 

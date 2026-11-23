@@ -44,6 +44,32 @@ func TestModelActivityTurnHeaders(t *testing.T) {
 	}
 }
 
+func TestBindModelActivityUsesCodexMetadataWithoutAgentHeader(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("x-codex-turn-metadata", `{"thread_id":"thread-codex","turn_id":"turn-codex"}`)
+	record := mcpgateway.ModelProxyAuditRecord{UserID: "user", Endpoint: "/v1/responses"}
+	bindModelActivity(c, Options{}, &record, map[string]any{"input": "hello"})
+	if record.ClientType != mcpgateway.ModelActivityClientCodex || record.AgentID != "" || record.SessionID != "thread-codex" || record.TurnID != "turn-codex" {
+		t.Fatalf("Codex 关联错误: %+v", record)
+	}
+	if record.SessionSource != "codex_thread_id" || record.TurnSource != "codex_turn_id" {
+		t.Fatalf("Codex 关联来源错误: %+v", record)
+	}
+}
+
+func TestBindModelActivityUsesGenericHeadersWithoutAgentHeader(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("X-Client-Session-ID", "session-generic")
+	c.Request.Header.Set("X-Client-Turn-ID", "turn-generic")
+	record := mcpgateway.ModelProxyAuditRecord{UserID: "user", Endpoint: "/v1/chat/completions"}
+	bindModelActivity(c, Options{}, &record, map[string]any{"messages": []any{}})
+	if record.ClientType != mcpgateway.ModelActivityClientGeneric || record.SessionID != "session-generic" || record.TurnID != "turn-generic" {
+		t.Fatalf("通用客户端关联错误: %+v", record)
+	}
+}
+
 func TestModelActivityInputAndCapture(t *testing.T) {
 	for _, tc := range []struct{ endpoint, body, want string }{
 		{"/v1/responses", `{"input":"你好"}`, "你好"},

@@ -7,12 +7,12 @@ import (
 )
 
 type ModelActivityFilter struct {
-	UserID, AgentID, SessionID, TurnID string
-	Unattributed                       bool
-	Start, End, Now                    time.Time
-	Page, PageSize, Limit              int
-	CursorCreatedAt                    time.Time
-	CursorID                           string
+	UserID, AgentID, ClientType, SessionID, TurnID string
+	Unattributed                                   bool
+	Start, End, Now                                time.Time
+	Page, PageSize, Limit                          int
+	CursorCreatedAt                                time.Time
+	CursorID                                       string
 }
 
 type ModelActivityStats struct {
@@ -37,10 +37,11 @@ type ModelActivitySummary struct {
 }
 
 type ModelActivityAgent struct {
-	UserID    string `json:"user_id"`
-	UserName  string `json:"user_name"`
-	AgentID   string `json:"agent_id"`
-	AgentName string `json:"agent_name"`
+	UserID     string `json:"user_id"`
+	UserName   string `json:"user_name"`
+	ClientType string `json:"client_type"`
+	AgentID    string `json:"agent_id"`
+	AgentName  string `json:"agent_name"`
 	ModelActivityStats
 }
 
@@ -64,7 +65,8 @@ func IsModelActivity(record ModelProxyAuditRecord) bool {
 
 func modelActivityMatches(record ModelProxyAuditRecord, filter ModelActivityFilter) bool {
 	return IsModelActivity(record) && (filter.UserID == "" || record.UserID == filter.UserID) &&
-		(filter.AgentID == "" || record.AgentID == filter.AgentID) && (!filter.Unattributed || record.AgentID == "") &&
+		(filter.AgentID == "" || record.AgentID == filter.AgentID) &&
+		(filter.ClientType == "" || record.ClientType == filter.ClientType) && (!filter.Unattributed || record.AgentID == "") &&
 		(filter.SessionID == "" || record.SessionID == filter.SessionID) && (filter.TurnID == "" || record.TurnID == filter.TurnID) &&
 		(filter.Start.IsZero() || !record.CreatedAt.Before(filter.Start)) && (filter.End.IsZero() || record.CreatedAt.Before(filter.End))
 }
@@ -118,7 +120,7 @@ func (s *MemoryStore) ModelActivityOverview(ctx context.Context, filter ModelAct
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	records := make([]ModelProxyAuditRecord, 0)
-	groups := map[[2]string][]ModelProxyAuditRecord{}
+	groups := map[[3]string][]ModelProxyAuditRecord{}
 	users := map[string]bool{}
 	agents := map[[2]string]bool{}
 	for _, record := range s.modelAudits {
@@ -126,21 +128,24 @@ func (s *MemoryStore) ModelActivityOverview(ctx context.Context, filter ModelAct
 			continue
 		}
 		records = append(records, record)
-		key := [2]string{record.UserID, record.AgentID}
+		key := [3]string{record.UserID, record.ClientType, record.AgentID}
 		groups[key] = append(groups[key], record)
 		users[record.UserID] = true
 		if record.AgentID != "" {
-			agents[key] = true
+			agents[[2]string{record.UserID, record.AgentID}] = true
 		}
 	}
 	result := ModelActivityOverview{Summary: ModelActivitySummary{ModelActivityStats: aggregateModelActivity(records, filter.Now), ActiveUsers: int64(len(users)), ActiveAgents: int64(len(agents))}, Agents: make([]ModelActivityAgent, 0), Total: int64(len(groups))}
 	for key, records := range groups {
-		result.Agents = append(result.Agents, ModelActivityAgent{UserID: key[0], AgentID: key[1], ModelActivityStats: aggregateModelActivity(records, filter.Now)})
+		result.Agents = append(result.Agents, ModelActivityAgent{UserID: key[0], ClientType: key[1], AgentID: key[2], ModelActivityStats: aggregateModelActivity(records, filter.Now)})
 	}
 	sort.Slice(result.Agents, func(i, j int) bool {
 		a, b := result.Agents[i], result.Agents[j]
 		if a.LastRequestAt.Equal(*b.LastRequestAt) {
 			if a.UserID == b.UserID {
+				if a.ClientType != b.ClientType {
+					return a.ClientType < b.ClientType
+				}
 				return a.AgentID < b.AgentID
 			}
 			return a.UserID < b.UserID
@@ -161,15 +166,15 @@ func (s *MemoryStore) ModelActivityOverview(ctx context.Context, filter ModelAct
 
 func aggregateModelActivity(records []ModelProxyAuditRecord, now time.Time) ModelActivityStats {
 	stats := ModelActivityStats{}
-	sessions := map[[3]string]bool{}
-	turns := map[[4]string]bool{}
+	sessions := map[[4]string]bool{}
+	turns := map[[5]string]bool{}
 	var ended, succeeded, duration, tokens int64
 	for _, r := range records {
 		stats.RequestCount++
-		if r.AgentID != "" && r.SessionID != "" {
-			sessions[[3]string{r.UserID, r.AgentID, r.SessionID}] = true
+		if r.SessionID != "" {
+			sessions[[4]string{r.UserID, r.ClientType, r.AgentID, r.SessionID}] = true
 			if r.TurnID != "" {
-				turns[[4]string{r.UserID, r.AgentID, r.SessionID, r.TurnID}] = true
+				turns[[5]string{r.UserID, r.ClientType, r.AgentID, r.SessionID, r.TurnID}] = true
 			}
 		}
 		if stats.LastRequestAt == nil || r.CreatedAt.After(*stats.LastRequestAt) {

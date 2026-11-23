@@ -22,6 +22,12 @@ type modelProxyAuditResponse struct {
 	Endpoint            string             `json:"endpoint"`
 	Method              string             `json:"method"`
 	Model               string             `json:"model"`
+	ClientType          string             `json:"client_type"`
+	AgentID             string             `json:"agent_id"`
+	SessionID           string             `json:"session_id"`
+	SessionSource       string             `json:"session_source"`
+	TurnID              string             `json:"turn_id"`
+	TurnSource          string             `json:"turn_source"`
 	RequestedModel      string             `json:"requested_model"`
 	UpstreamModel       string             `json:"upstream_model"`
 	ResponseModel       string             `json:"response_model"`
@@ -88,6 +94,12 @@ func toModelProxyAuditResponse(record mcpgateway.ModelProxyAuditRecord) modelPro
 		Endpoint:            record.Endpoint,
 		Method:              record.Method,
 		Model:               record.Model,
+		ClientType:          record.ClientType,
+		AgentID:             record.AgentID,
+		SessionID:           record.SessionID,
+		SessionSource:       record.SessionSource,
+		TurnID:              record.TurnID,
+		TurnSource:          record.TurnSource,
 		RequestedModel:      record.RequestedModel,
 		UpstreamModel:       record.UpstreamModel,
 		ResponseModel:       record.ResponseModel,

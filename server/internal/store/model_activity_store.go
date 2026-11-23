@@ -17,7 +17,7 @@ const modelActivityCondition = `activity_content IS NOT NULL AND method = 'POST'
 func modelActivityWhere(f mcpgateway.ModelActivityFilter) (string, []any) {
 	clauses := []string{modelActivityCondition, "created_at >= $1", "created_at < $2"}
 	args := []any{f.Start, f.End}
-	for _, field := range []struct{ name, value string }{{"user_id", f.UserID}, {"agent_id", f.AgentID}, {"session_id", f.SessionID}, {"turn_id", f.TurnID}} {
+	for _, field := range []struct{ name, value string }{{"user_id", f.UserID}, {"agent_id", f.AgentID}, {"client_type", f.ClientType}, {"session_id", f.SessionID}, {"turn_id", f.TurnID}} {
 		if field.value != "" {
 			args = append(args, field.value)
 			clauses = append(clauses, fmt.Sprintf("%s = $%d", field.name, len(args)))
@@ -30,8 +30,8 @@ func modelActivityWhere(f mcpgateway.ModelActivityFilter) (string, []any) {
 }
 
 const modelActivityAggregateSQL = `COUNT(*),
- COUNT(DISTINCT (user_id,agent_id,session_id)) FILTER (WHERE agent_id <> '' AND session_id <> ''),
- COUNT(DISTINCT (user_id,agent_id,session_id,turn_id)) FILTER (WHERE agent_id <> '' AND session_id <> '' AND turn_id <> ''),
+ COUNT(DISTINCT (user_id,client_type,agent_id,session_id)) FILTER (WHERE session_id <> ''),
+ COUNT(DISTINCT (user_id,client_type,agent_id,session_id,turn_id)) FILTER (WHERE session_id <> '' AND turn_id <> ''),
  SUM(total_tokens) FILTER (WHERE usage_status IN ('complete','partial')),
  COUNT(*) FILTER (WHERE status = 'succeeded')::float8 / NULLIF(COUNT(*) FILTER (WHERE status <> 'started'),0),
  AVG(duration_ms) FILTER (WHERE status <> 'started'), MAX(created_at),
@@ -58,21 +58,21 @@ func (s *MCPGatewayStore) ModelActivityOverview(ctx context.Context, f mcpgatewa
 	scan := modelActivityScanStats(&result.Summary.ModelActivityStats)
 	scan = append(scan, &result.Summary.ActiveUsers, &result.Summary.ActiveAgents, &result.Total)
 	err := s.pool.QueryRow(ctx, `SELECT `+modelActivityAggregateSQL+`, COUNT(DISTINCT user_id),
- COUNT(DISTINCT (user_id,agent_id)) FILTER (WHERE agent_id <> ''), COUNT(DISTINCT (user_id,agent_id))
+ COUNT(DISTINCT (user_id,agent_id)) FILTER (WHERE agent_id <> ''), COUNT(DISTINCT (user_id,client_type,agent_id))
  FROM model_proxy_audit_records WHERE `+where, args...).Scan(scan...)
 	if err != nil {
 		return result, err
 	}
 	args = append(args, f.PageSize, (f.Page-1)*f.PageSize)
-	rows, err := s.pool.Query(ctx, `SELECT user_id,agent_id,`+modelActivityAggregateSQL+` FROM model_proxy_audit_records WHERE `+where+`
- GROUP BY user_id,agent_id ORDER BY MAX(created_at) DESC,user_id,agent_id`+fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
+	rows, err := s.pool.Query(ctx, `SELECT user_id,client_type,agent_id,`+modelActivityAggregateSQL+` FROM model_proxy_audit_records WHERE `+where+`
+ GROUP BY user_id,client_type,agent_id ORDER BY MAX(created_at) DESC,user_id,client_type,agent_id`+fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
 	if err != nil {
 		return result, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var agent mcpgateway.ModelActivityAgent
-		scan := append([]any{&agent.UserID, &agent.AgentID}, modelActivityScanStats(&agent.ModelActivityStats)...)
+		scan := append([]any{&agent.UserID, &agent.ClientType, &agent.AgentID}, modelActivityScanStats(&agent.ModelActivityStats)...)
 		if err := rows.Scan(scan...); err != nil {
 			return result, err
 		}

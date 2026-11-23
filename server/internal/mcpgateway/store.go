@@ -680,6 +680,9 @@ func (s *MemoryStore) CreateModelProxyAuditRecord(ctx context.Context, record Mo
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = time.Now().UTC()
 	}
+	if record.ClientType == "" {
+		record.ClientType = ModelActivityClientUnknown
+	}
 	if record.UsageStatus == "" {
 		record.UsageStatus = ModelProxyAuditUsageStatus(record)
 	}

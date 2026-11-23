@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/krillinai/Clawee/server/internal/mcpgateway"
+	"github.com/krillinai/Clawee/server/internal/office/claweeactivity"
 )
 
-const modelProxyAuditSnapshotLimit = 64 * 1024
+const modelProxyAuditSnapshotLimit = 256 * 1024
 
 func sanitizeModelProxyHeaders(headers http.Header) mcpgateway.JSONMap {
 	if headers == nil {
@@ -73,6 +75,7 @@ func snapshotModelProxyBody(raw []byte) (mcpgateway.JSONMap, bool) {
 			"parse_error": true,
 			"bytes":       len(raw),
 			"sha256":      sha256Hex(raw),
+			"prefix":      modelProxyTextPrefix([]byte(claweeactivity.RedactText(string(raw)))),
 		}, true
 	}
 	sanitized := sanitizeModelProxyJSON(value)
@@ -82,6 +85,7 @@ func snapshotModelProxyBody(raw []byte) (mcpgateway.JSONMap, bool) {
 			"truncated": true,
 			"bytes":     len(raw),
 			"sha256":    sha256Hex(raw),
+			"prefix":    modelProxyTextPrefix(encoded),
 		}, true
 	}
 	if sanitized == nil {
@@ -91,6 +95,72 @@ func snapshotModelProxyBody(raw []byte) (mcpgateway.JSONMap, bool) {
 		return mcpgateway.JSONMap(object), false
 	}
 	return mcpgateway.JSONMap{"value": sanitized}, false
+}
+
+func snapshotModelProxySSE(raw []byte) (mcpgateway.JSONMap, bool) {
+	events := make([]any, 0)
+	var data []byte
+	flush := func() {
+		payload := bytes.TrimSpace(data)
+		if len(payload) == 0 {
+			data = data[:0]
+			return
+		}
+		if bytes.Equal(payload, []byte("[DONE]")) {
+			events = append(events, "[DONE]")
+		} else {
+			var value any
+			if json.Unmarshal(payload, &value) == nil {
+				events = append(events, sanitizeModelProxyJSON(value))
+			} else {
+				events = append(events, claweeactivity.RedactText(string(payload)))
+			}
+		}
+		data = data[:0]
+	}
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		line = bytes.TrimSuffix(line, []byte("\r"))
+		if len(bytes.TrimSpace(line)) == 0 {
+			flush()
+			continue
+		}
+		if bytes.HasPrefix(line, []byte("data:")) {
+			value := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
+			if len(data) > 0 {
+				data = append(data, '\n')
+			}
+			data = append(data, value...)
+		}
+	}
+	flush()
+	encoded, err := json.Marshal(events)
+	if err == nil && len(encoded) <= modelProxyAuditSnapshotLimit {
+		return mcpgateway.JSONMap{
+			"content_type": "text/event-stream",
+			"events":       events,
+			"bytes":        len(raw),
+			"sha256":       sha256Hex(raw),
+		}, false
+	}
+	return mcpgateway.JSONMap{
+		"content_type": "text/event-stream",
+		"truncated":    true,
+		"bytes":        len(raw),
+		"sha256":       sha256Hex(raw),
+		"prefix":       modelProxyTextPrefix(encoded),
+	}, true
+}
+
+func modelProxyTextPrefix(raw []byte) string {
+	value := strings.ToValidUTF8(string(raw), "")
+	if len(value) <= modelProxyAuditSnapshotLimit {
+		return value
+	}
+	value = value[:modelProxyAuditSnapshotLimit]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
 type modelProxyUsage struct {

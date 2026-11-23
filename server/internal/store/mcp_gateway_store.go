@@ -807,6 +807,9 @@ func (s *MCPGatewayStore) CreateModelProxyAuditRecord(ctx context.Context, recor
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = time.Now().UTC()
 	}
+	if record.ClientType == "" {
+		record.ClientType = mcpgateway.ModelActivityClientUnknown
+	}
 	if record.UsageStatus == "" {
 		record.UsageStatus = mcpgateway.ModelProxyAuditUsageStatus(record)
 	}
@@ -819,10 +822,11 @@ INSERT INTO model_proxy_audit_records (
 	 endpoint, method, model, requested_model, upstream_model, response_model, request_type, status, gateway_status, upstream_status, error_code, error_message,
 	 input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, usage_available, usage_status, usage_source, request_headers, request_body,
  response_headers, response_body, request_bytes, response_bytes, response_chunks, truncated,
-	 duration_ms, first_byte_ms, created_at, completed_at, agent_id, session_id, turn_id, activity_content
+ duration_ms, first_byte_ms, created_at, completed_at, agent_id, session_id, turn_id, activity_content,
+ client_type, session_source, turn_source
 ) VALUES (
 	 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-	 $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43
+	 $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46
 )`,
 		record.AuditID, record.RequestID, record.UserID, record.UserNameSnapshot, record.APIKeyID, record.APIKeyFingerprint,
 		record.Endpoint, record.Method, record.Model, record.RequestedModel, record.UpstreamModel, record.ResponseModel, record.RequestType, record.Status, record.GatewayStatus,
@@ -830,6 +834,7 @@ INSERT INTO model_proxy_audit_records (
 		record.TotalTokens, record.CacheReadTokens, record.CacheCreationTokens, record.ReasoningTokens, record.UsageAvailable,
 		record.UsageStatus, record.UsageSource, requestHeaders, requestBody, responseHeaders, responseBody, record.RequestBytes, record.ResponseBytes, record.ResponseChunks, record.Truncated,
 		record.DurationMS, record.FirstByteMS, record.CreatedAt, record.CompletedAt, record.AgentID, record.SessionID, record.TurnID, modelActivityContentJSON(record.ActivityContent),
+		record.ClientType, record.SessionSource, record.TurnSource,
 	)
 	return err
 }
@@ -1015,7 +1020,7 @@ func modelProxyAuditSelectSQL() string {
 	 endpoint, method, model, requested_model, upstream_model, response_model, request_type, status, gateway_status, upstream_status, error_code, error_message,
 	 input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, usage_available, usage_status, usage_source, request_headers, request_body,
  response_headers, response_body, request_bytes, response_bytes, response_chunks, truncated,
-	 duration_ms, first_byte_ms, created_at, completed_at, agent_id, session_id, turn_id, activity_content FROM model_proxy_audit_records`
+	 duration_ms, first_byte_ms, created_at, completed_at, agent_id, session_id, turn_id, activity_content, client_type, session_source, turn_source FROM model_proxy_audit_records`
 }
 
 func (s *MCPGatewayStore) SaveGateRequest(ctx context.Context, gate mcpgateway.GateRequest) error {
@@ -1417,7 +1422,7 @@ func scanModelProxyAuditRecord(row rowScanner) (mcpgateway.ModelProxyAuditRecord
 		&record.ErrorCode, &record.ErrorMessage, &record.InputTokens, &record.OutputTokens, &record.TotalTokens, &record.CacheReadTokens,
 		&record.CacheCreationTokens, &record.ReasoningTokens, &record.UsageAvailable, &record.UsageStatus, &record.UsageSource,
 		&requestHeaders, &requestBody, &responseHeaders, &responseBody, &record.RequestBytes, &record.ResponseBytes,
-		&record.ResponseChunks, &record.Truncated, &record.DurationMS, &record.FirstByteMS, &record.CreatedAt, &completedAt, &record.AgentID, &record.SessionID, &record.TurnID, &activityContent)
+		&record.ResponseChunks, &record.Truncated, &record.DurationMS, &record.FirstByteMS, &record.CreatedAt, &completedAt, &record.AgentID, &record.SessionID, &record.TurnID, &activityContent, &record.ClientType, &record.SessionSource, &record.TurnSource)
 	if err != nil {
 		return mcpgateway.ModelProxyAuditRecord{}, err
 	}

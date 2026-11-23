@@ -428,8 +428,8 @@ func forwardModelProxyResponse(c *gin.Context, opts Options, audit mcpgateway.Mo
 			responseChunks++
 			usageAccumulator.Consume(buffer[:count])
 			activityCapture.Consume(buffer[:count])
-			if captured.Len() < modelProxyAuditSnapshotLimit*2 {
-				remaining := modelProxyAuditSnapshotLimit*2 - captured.Len()
+			if captured.Len() < modelProxyAuditSnapshotLimit {
+				remaining := modelProxyAuditSnapshotLimit - captured.Len()
 				if count <= remaining {
 					_, _ = captured.Write(buffer[:count])
 				} else {
@@ -547,7 +547,7 @@ func modelUpstreamURL(baseURL, path string) (string, error) {
 
 func copyModelProxyRequestHeaders(destination, source http.Header) {
 	for key, values := range source {
-		if strings.EqualFold(key, "X-Claw-Agent-ID") || strings.EqualFold(key, "X-Claw-Session-ID") || strings.EqualFold(key, "X-Claw-Turn-ID") || hopByHopModelProxyHeader(key) || strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie") || strings.EqualFold(key, "Host") {
+		if strings.EqualFold(key, "X-Claw-Agent-ID") || strings.EqualFold(key, "X-Claw-Session-ID") || strings.EqualFold(key, "X-Claw-Turn-ID") || strings.EqualFold(key, "X-Client-Session-ID") || strings.EqualFold(key, "X-Client-Turn-ID") || strings.EqualFold(key, "X-Client-Type") || hopByHopModelProxyHeader(key) || strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie") || strings.EqualFold(key, "Host") {
 			continue
 		}
 		for _, value := range values {
@@ -574,6 +574,14 @@ func finalizeModelAuditWithUsage(opts Options, record mcpgateway.ModelProxyAudit
 		record.ActivityContent.OutputStatus = "unavailable"
 	}
 	responseBody, responseTruncated := snapshotModelProxyBody(responseRaw)
+	if strings.Contains(strings.ToLower(responseHeaders.Get("Content-Type")), "text/event-stream") {
+		responseBody, responseTruncated = snapshotModelProxySSE(responseRaw)
+	}
+	if extraTruncated && responseBody != nil {
+		responseBody["truncated"] = true
+		responseBody["bytes"] = responseBytes
+		responseBody["sha256_scope"] = "captured_prefix"
+	}
 	usage := modelProxyUsage{}
 	if usageOverride != nil {
 		usage = *usageOverride

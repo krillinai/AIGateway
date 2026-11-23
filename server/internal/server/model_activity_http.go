@@ -27,7 +27,7 @@ func modelActivityQuery(c *gin.Context, opts Options) (mcpgateway.ModelActivityF
 	for _, field := range []struct {
 		name  string
 		value *string
-	}{{"user_id", &f.UserID}, {"agent_id", &f.AgentID}, {"session_id", &f.SessionID}, {"turn_id", &f.TurnID}} {
+	}{{"user_id", &f.UserID}, {"agent_id", &f.AgentID}, {"client_type", &f.ClientType}, {"session_id", &f.SessionID}, {"turn_id", &f.TurnID}} {
 		raw := c.Query(field.name)
 		if raw != "" {
 			*field.value = modelActivityID(raw)
@@ -42,7 +42,7 @@ func modelActivityQuery(c *gin.Context, opts Options) (mcpgateway.ModelActivityF
 			return f, nil, invalidActivityParameter("unattributed")
 		}
 	}
-	if (f.Unattributed && f.AgentID != "") || (f.SessionID != "" && (f.UserID == "" || f.AgentID == "")) || (f.TurnID != "" && (f.UserID == "" || f.AgentID == "" || f.SessionID == "")) {
+	if (f.Unattributed && f.AgentID != "") || (f.SessionID != "" && (f.UserID == "" || (f.ClientType == "" && f.AgentID == ""))) || (f.TurnID != "" && (f.UserID == "" || (f.ClientType == "" && f.AgentID == "") || f.SessionID == "")) {
 		return f, nil, invalidActivityParameter("主体筛选")
 	}
 	for _, field := range []struct {
@@ -132,7 +132,7 @@ func handleModelActivity(opts Options) gin.HandlerFunc {
 			}
 			for i := range result.Agents {
 				a := &result.Agents[i]
-				a.UserName, a.AgentName = modelActivityNames(c, opts, a.UserID, a.AgentID, "")
+				a.UserName, a.AgentName = modelActivityNames(c, opts, a.UserID, a.ClientType, a.AgentID, "")
 			}
 			meta["page"], meta["page_size"], meta["total"] = filter.Page, filter.PageSize, result.Total
 			c.JSON(200, gin.H{"data": gin.H{"summary": result.Summary, "agents": result.Agents, "meta": meta}})
@@ -163,7 +163,7 @@ func handleModelActivity(opts Options) gin.HandlerFunc {
 	}
 }
 
-func modelActivityNames(c *gin.Context, opts Options, userID, agentID, snapshot string) (string, string) {
+func modelActivityNames(c *gin.Context, opts Options, userID, clientType, agentID, snapshot string) (string, string) {
 	userName := snapshot
 	if userName == "" {
 		userName = userID
@@ -173,7 +173,7 @@ func modelActivityNames(c *gin.Context, opts Options, userID, agentID, snapshot 
 			userName = account.DisplayName()
 		}
 	}
-	agentName := "未关联智能体"
+	agentName := modelActivityClientLabel(clientType)
 	if agentID != "" {
 		agentName = agentID
 		if agent, err := opts.ProxyGateway.Store().GetAgent(c.Request.Context(), agentID); err == nil && strings.TrimSpace(agent.Name) != "" {
@@ -183,8 +183,23 @@ func modelActivityNames(c *gin.Context, opts Options, userID, agentID, snapshot 
 	return userName, agentName
 }
 
+func modelActivityClientLabel(clientType string) string {
+	switch clientType {
+	case mcpgateway.ModelActivityClientClawee:
+		return "未关联智能体"
+	case mcpgateway.ModelActivityClientCodex:
+		return "Codex CLI"
+	case mcpgateway.ModelActivityClientClaude:
+		return "Claude Code"
+	case mcpgateway.ModelActivityClientGeneric:
+		return "其他客户端"
+	default:
+		return "未识别客户端"
+	}
+}
+
 func modelActivityRequest(c *gin.Context, opts Options, r mcpgateway.ModelProxyAuditRecord) gin.H {
-	userName, agentName := modelActivityNames(c, opts, r.UserID, r.AgentID, r.UserNameSnapshot)
+	userName, agentName := modelActivityNames(c, opts, r.UserID, r.ClientType, r.AgentID, r.UserNameSnapshot)
 	var completedAt *time.Time
 	var duration *int64
 	var tokens *int64
@@ -198,6 +213,6 @@ func modelActivityRequest(c *gin.Context, opts Options, r mcpgateway.ModelProxyA
 	if usageStatus != mcpgateway.ModelProxyUsageUnavailable {
 		tokens = &r.TotalTokens
 	}
-	return gin.H{"audit_id": r.AuditID, "user_id": r.UserID, "user_name": userName, "agent_id": r.AgentID, "agent_name": agentName, "session_id": r.SessionID, "turn_id": r.TurnID, "model": r.Model,
+	return gin.H{"audit_id": r.AuditID, "user_id": r.UserID, "user_name": userName, "client_type": r.ClientType, "agent_id": r.AgentID, "agent_name": agentName, "session_id": r.SessionID, "session_source": r.SessionSource, "turn_id": r.TurnID, "turn_source": r.TurnSource, "model": r.Model,
 		"created_at": r.CreatedAt, "completed_at": completedAt, "status": r.Status, "error_code": r.ErrorCode, "total_tokens": tokens, "usage_status": usageStatus, "duration_ms": duration}
 }

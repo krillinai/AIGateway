@@ -42,23 +42,51 @@ func modelActivityHeader(h http.Header, name string) string {
 	return modelActivityID(values[0])
 }
 
-func modelActivityTurnID(h http.Header) string {
+func modelActivityTurnMetadata(h http.Header) (sessionID, turnID string, present bool) {
 	values, exists := h[http.CanonicalHeaderKey("x-codex-turn-metadata")]
 	if !exists {
-		return modelActivityHeader(h, "X-Claw-Turn-ID")
+		return "", "", false
 	}
 	if len(values) != 1 || len(values[0]) > 8<<10 || !utf8.ValidString(values[0]) {
-		return ""
+		return "", "", true
 	}
 	var value map[string]json.RawMessage
 	if json.Unmarshal([]byte(values[0]), &value) != nil || value == nil {
-		return ""
+		return "", "", true
 	}
-	var id string
-	if json.Unmarshal(value["turn_id"], &id) != nil {
-		return ""
+	var session, turn string
+	if json.Unmarshal(value["thread_id"], &session) == nil {
+		sessionID = modelActivityID(session)
 	}
-	return modelActivityID(id)
+	if json.Unmarshal(value["turn_id"], &turn) == nil {
+		turnID = modelActivityID(turn)
+	}
+	return sessionID, turnID, true
+}
+
+func modelActivityTurnID(h http.Header) string {
+	_, turnID, present := modelActivityTurnMetadata(h)
+	if !present {
+		return modelActivityHeader(h, "X-Claw-Turn-ID")
+	}
+	return turnID
+}
+
+func modelActivityClientHint(h http.Header) string {
+	value := strings.ToLower(modelActivityHeader(h, "X-Client-Type"))
+	switch value {
+	case mcpgateway.ModelActivityClientClaude:
+		return mcpgateway.ModelActivityClientClaude
+	case mcpgateway.ModelActivityClientGeneric:
+		return mcpgateway.ModelActivityClientGeneric
+	case mcpgateway.ModelActivityClientCodex:
+		return mcpgateway.ModelActivityClientCodex
+	}
+	userAgent := strings.ToLower(h.Get("User-Agent"))
+	if strings.Contains(userAgent, "claude-code") || strings.Contains(userAgent, "claude-cli") || strings.Contains(userAgent, "claude_cli") {
+		return mcpgateway.ModelActivityClientClaude
+	}
+	return ""
 }
 
 func bindModelActivity(c *gin.Context, opts Options, record *mcpgateway.ModelProxyAuditRecord, payload map[string]any) {
@@ -71,22 +99,58 @@ func bindModelActivity(c *gin.Context, opts Options, record *mcpgateway.ModelPro
 	if record.ActivityContent.InputText != "" {
 		record.ActivityContent.InputStatus = "available"
 	}
+	record.ClientType = mcpgateway.ModelActivityClientUnknown
 	agentID := modelActivityHeader(c.Request.Header, "X-Claw-Agent-ID")
-	if agentID == "" || opts.AccountService == nil || opts.ProxyGateway == nil {
-		return
+	agentHeaderPresent := len(c.Request.Header.Values("X-Claw-Agent-ID")) > 0
+	agentValid := false
+	if agentID != "" && opts.AccountService != nil && opts.ProxyGateway != nil {
+		owner, err := opts.AccountService.AccountForAgent(c.Request.Context(), agentID)
+		if err == nil && owner.UserID == record.UserID {
+			agent, agentErr := opts.ProxyGateway.Store().GetAgent(c.Request.Context(), agentID)
+			agentValid = agentErr == nil && agent.Status == mcpgateway.StatusActive
+		}
 	}
-	owner, err := opts.AccountService.AccountForAgent(c.Request.Context(), agentID)
-	if err != nil || owner.UserID != record.UserID {
-		return
+	if agentValid {
+		record.AgentID = agentID
+		record.ClientType = mcpgateway.ModelActivityClientClawee
 	}
-	agent, err := opts.ProxyGateway.Store().GetAgent(c.Request.Context(), agentID)
-	if err != nil || agent.Status != mcpgateway.StatusActive {
-		return
+
+	metadataSession, metadataTurn, metadataPresent := modelActivityTurnMetadata(c.Request.Header)
+	if !agentHeaderPresent && metadataPresent {
+		record.ClientType = mcpgateway.ModelActivityClientCodex
 	}
-	record.AgentID = agentID
-	record.SessionID = modelActivityHeader(c.Request.Header, "X-Claw-Session-ID")
-	if record.SessionID != "" {
-		record.TurnID = modelActivityTurnID(c.Request.Header)
+	if !agentHeaderPresent && !metadataPresent {
+		if hint := modelActivityClientHint(c.Request.Header); hint != "" {
+			record.ClientType = hint
+		} else if modelActivityHeader(c.Request.Header, "X-Client-Session-ID") != "" || modelActivityHeader(c.Request.Header, "X-Client-Turn-ID") != "" {
+			record.ClientType = mcpgateway.ModelActivityClientGeneric
+		}
+	}
+	if agentValid {
+		if sessionID := modelActivityHeader(c.Request.Header, "X-Claw-Session-ID"); sessionID != "" {
+			record.SessionID, record.SessionSource = sessionID, "clawee_header"
+		}
+	}
+	if record.SessionID == "" && (!agentHeaderPresent || agentValid) {
+		if metadataSession != "" {
+			record.SessionID, record.SessionSource = metadataSession, "codex_thread_id"
+		} else if sessionID := modelActivityHeader(c.Request.Header, "X-Client-Session-ID"); sessionID != "" {
+			record.SessionID, record.SessionSource = sessionID, "client_header"
+		}
+	}
+	if metadataPresent && (!agentHeaderPresent || agentValid) {
+		if metadataTurn != "" {
+			record.TurnID, record.TurnSource = metadataTurn, "codex_turn_id"
+		}
+	} else if agentValid {
+		if turnID := modelActivityHeader(c.Request.Header, "X-Claw-Turn-ID"); turnID != "" {
+			record.TurnID, record.TurnSource = turnID, "clawee_header"
+		}
+	} else if turnID := modelActivityHeader(c.Request.Header, "X-Client-Turn-ID"); turnID != "" {
+		record.TurnID, record.TurnSource = turnID, "client_header"
+	}
+	if record.TurnID != "" && record.SessionID == "" {
+		record.TurnID, record.TurnSource = "", ""
 	}
 }
 
