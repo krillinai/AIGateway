@@ -387,25 +387,26 @@ function DistributionCard({ title, items, empty, valueLabel }: {
 function AgentActivityTable({ agents }: { agents: ActivityAgent[] }) {
   return (
     <Card className="overflow-hidden shadow-none">
-      <CardHeader><CardTitle><h2>Agent 活动</h2></CardTitle><CardDescription>会话、轮次与最近活动</CardDescription></CardHeader>
-      <CardContent className="p-0">
+      <CardHeader><CardTitle><h2>Agent 活动</h2></CardTitle><CardDescription>会话、轮次、模型与 MCP 调用</CardDescription></CardHeader>
+      <CardContent className="overflow-x-auto p-0">
         {agents.length === 0 ? <div className="p-6"><EmptyState title="当前范围内没有 Agent 活动" /></div> : (
-          <Table>
-            <TableHeader><TableRow><TableHead className="pl-6">Agent</TableHead><TableHead>状态</TableHead><TableHead className="text-right">会话</TableHead><TableHead className="text-right">轮次</TableHead><TableHead className="text-right">最近活动</TableHead><TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
+          <Table aria-label="Agent 活动" className="min-w-[860px]">
+            <TableHeader><TableRow><TableHead className="pl-6">Agent</TableHead><TableHead>状态</TableHead><TableHead className="text-right">会话</TableHead><TableHead className="text-right">轮次</TableHead><TableHead className="text-right">模型调用</TableHead><TableHead className="text-right">MCP 调用</TableHead><TableHead className="text-right">最近活动</TableHead><TableHead className="pr-6 text-right">操作</TableHead></TableRow></TableHeader>
             <TableBody>
               {agents.map((agent) => {
+                const external = agent.external || agent.agent_id.startsWith("external:");
                 const detailHref = `/app/activity/detail?collector_id=${encodeURIComponent(agent.collector_id)}&agent_id=${encodeURIComponent(agent.agent_id)}`;
                 return (
                   <TableRow key={`${agent.collector_id}:${agent.agent_id}`}>
-                    <TableCell className="pl-6"><div className="font-medium">{agent.name}</div><div className="font-mono text-xs text-muted-foreground">{agent.agent_id}</div></TableCell>
-                    <TableCell><Badge variant={agent.status === "online" ? "success" : "muted"}>{mcpStatusLabel(agent.status)}</Badge></TableCell>
+                    <TableCell className="pl-6"><div className="font-medium">{agent.name}</div><div className="font-mono text-xs text-muted-foreground">{agent.agent_id}</div>{external ? <Badge className="mt-1" variant="outline">外部客户端{agent.client_type ? ` · ${externalClientLabel(agent.client_type)}` : ""}</Badge> : null}</TableCell>
+                    <TableCell><Badge variant={agent.status === "online" || agent.status === "active" ? "success" : "muted"}>{mcpStatusLabel(agent.status)}</Badge></TableCell>
                     <TableCell className="text-right font-mono">{formatInteger(agent.session_count)}</TableCell>
                     <TableCell className="text-right font-mono">{formatInteger(agent.turn_count)}</TableCell>
+                    <TableCell className="text-right font-mono">{external ? formatInteger(agent.model_request_count ?? 0) : "--"}</TableCell>
+                    <TableCell className="text-right font-mono">{external ? formatInteger(agent.mcp_call_count ?? 0) : "--"}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">{agent.last_activity_at ? formatDateTime(agent.last_activity_at) : "尚无活动"}</TableCell>
                     <TableCell className="pr-6 text-right">
-                      <Button asChild size="sm" variant="outline">
-                        <Link aria-label={`查看 ${agent.name} 详情`} to={detailHref}>查看详情</Link>
-                      </Button>
+                      {external ? <span className="text-xs text-muted-foreground">模型与 MCP 审计</span> : <Button asChild size="sm" variant="outline"><Link aria-label={`查看 ${agent.name} 详情`} to={detailHref}>查看详情</Link></Button>}
                     </TableCell>
                   </TableRow>
                 );
@@ -416,6 +417,17 @@ function AgentActivityTable({ agents }: { agents: ActivityAgent[] }) {
       </CardContent>
     </Card>
   );
+}
+
+function externalClientLabel(clientType?: string) {
+  switch (clientType) {
+    case "codex_cli": return "Codex CLI";
+    case "claude_code": return "Claude Code";
+    case "workbuddy": return "WorkBuddy";
+    case "account_token": return "账户级 MCP";
+    case "generic": return "其他客户端";
+    default: return clientType || "外部客户端";
+  }
 }
 
 function ActivityPageSkeleton() {

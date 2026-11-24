@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -52,7 +52,10 @@ const fixtureStatistics: ActivityStatistics = {
     { rank: 1, name: "张三", requests: 12, total_tokens: 860000 },
     { rank: 2, name: "李四", requests: 8, total_tokens: 2400 },
   ],
-  agents: [{ collector_id: "collector 1", agent_id: "hermes/c03", name: "Hermes C03", status: "online", session_count: 4, turn_count: 12, last_activity_at: "2026-08-13T03:00:00Z" }],
+  agents: [
+    { collector_id: "collector 1", agent_id: "hermes/c03", name: "Hermes C03", status: "online", session_count: 4, turn_count: 12, last_activity_at: "2026-08-13T03:00:00Z" },
+    { collector_id: "", agent_id: "external:workbuddy:user-1", name: "WorkBuddy", status: "active", external: true, client_type: "workbuddy", session_count: 2, turn_count: 3, model_request_count: 5, mcp_call_count: 4, last_activity_at: "2026-08-13T04:00:00Z" },
+  ],
   data_status: { model_usage: "available", activity: "available" },
 };
 
@@ -98,6 +101,13 @@ describe("AppActivityPage", () => {
     expect(screen.queryByRole("region", { name: "账户额度" })).not.toBeInTheDocument();
     expect(screen.queryByText(/sub2api/i)).not.toBeInTheDocument();
     expect(screen.getByText("Hermes C03")).toBeInTheDocument();
+    const externalRow = screen.getByRole("row", { name: /WorkBuddy external:workbuddy:user-1/ });
+    expect(within(externalRow).getByText("外部客户端 · WorkBuddy")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "模型调用" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "MCP 调用" })).toBeInTheDocument();
+    expect(externalRow).toHaveTextContent("5");
+    expect(externalRow).toHaveTextContent("4");
+    expect(within(externalRow).queryByRole("link")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看 Hermes C03 详情" })).toHaveAttribute(
       "href",
       "/app/activity/detail?collector_id=collector%201&agent_id=hermes%2Fc03",

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"sort"
 	"time"
 
 	"github.com/krillinai/Clawee/server/internal/activity"
@@ -92,6 +93,25 @@ LEFT JOIN accounts owner ON owner.user_id = ct.user_id
 	if err := agentRows.Err(); err != nil {
 		return activity.ActivitySnapshot{}, err
 	}
+	externalAgents, err := s.externalAgentActivities(ctx, start, end)
+	if err != nil {
+		return activity.ActivitySnapshot{}, err
+	}
+	result.ActiveAgents += int64(len(externalAgents))
+	result.Agents = append(result.Agents, externalAgents...)
+	sort.SliceStable(result.Agents, func(i, j int) bool {
+		left, right := result.Agents[i], result.Agents[j]
+		if left.LastActivityAt == nil || right.LastActivityAt == nil {
+			return left.LastActivityAt != nil
+		}
+		if !left.LastActivityAt.Equal(*right.LastActivityAt) {
+			return left.LastActivityAt.After(*right.LastActivityAt)
+		}
+		if left.CollectorID != right.CollectorID {
+			return left.CollectorID < right.CollectorID
+		}
+		return left.AgentID < right.AgentID
+	})
 	err = s.db.QueryRowContext(ctx, `
 SELECT COUNT(DISTINCT source_event_key) FILTER (WHERE event_type = 'skill.created'),
        COUNT(DISTINCT source_event_key) FILTER (WHERE event_type = 'skill.version_uploaded')
@@ -108,6 +128,110 @@ WHERE occurred_at >= $1 AND occurred_at < $2 AND actor_kind = 'user'
 	}
 	result.EmployeeSkillUsage, err = s.employeeSkillUsage(ctx, start, end)
 	return result, err
+}
+
+func (s *PostgresStore) externalAgentActivities(ctx context.Context, start, end time.Time) ([]activity.Agent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+WITH model_source AS (
+  SELECT
+    CASE WHEN a.agent_id LIKE 'external:%' THEN a.agent_id ELSE 'external:' || a.client_type || ':' || a.user_id END AS agent_id,
+    a.user_id,
+    CASE WHEN a.agent_id LIKE 'external:%:%' THEN split_part(a.agent_id, ':', 2) ELSE a.client_type END AS client_type,
+    a.session_id,
+    a.turn_id,
+    a.created_at
+  FROM model_proxy_audit_records a
+  WHERE a.created_at >= $1
+    AND a.created_at < $2
+    AND a.method = 'POST'
+    AND a.endpoint IN ('/v1/responses', '/v1/chat/completions')
+    AND a.status NOT IN ('rejected_api_key', 'rejected_scope', 'rejected_account')
+    AND a.activity_content IS NOT NULL
+    AND a.user_id <> ''
+    AND (a.client_type IN ('codex_cli', 'claude_code', 'workbuddy', 'generic', 'account_token')
+      OR (a.agent_id LIKE 'external:%:%' AND split_part(a.agent_id, ':', 2) IN ('codex_cli', 'claude_code', 'workbuddy', 'generic', 'account_token')))
+), model_agents AS (
+  SELECT agent_id, MAX(user_id) AS user_id, MAX(client_type) AS client_type,
+    COUNT(*) AS model_request_count,
+    COUNT(DISTINCT NULLIF(session_id, '')) AS session_count,
+    COUNT(DISTINCT (session_id, turn_id)) FILTER (WHERE session_id <> '' AND turn_id <> '') AS turn_count,
+    MAX(created_at) AS last_activity_at
+  FROM model_source
+  GROUP BY agent_id
+), mcp_agents AS (
+  SELECT a.agent_id,
+    split_part(a.agent_id, ':', 2) AS client_type,
+    split_part(a.agent_id, ':', 3) AS user_id,
+    COUNT(*) AS mcp_call_count,
+    MAX(a.created_at) AS last_activity_at
+  FROM mcp_proxy_audit_records a
+  WHERE a.created_at >= $1
+    AND a.created_at < $2
+    AND a.capability_type = 'tool'
+    AND a.decision IN ('allowed', 'confirmation_completed')
+    AND a.agent_id LIKE 'external:%:%'
+    AND split_part(a.agent_id, ':', 2) IN ('codex_cli', 'claude_code', 'workbuddy', 'generic', 'account_token')
+    AND split_part(a.agent_id, ':', 3) <> ''
+  GROUP BY a.agent_id
+), external_ids AS (
+  SELECT agent_id FROM model_agents
+  UNION
+  SELECT agent_id FROM mcp_agents
+)
+SELECT ids.agent_id,
+  COALESCE(model.client_type, mcp.client_type),
+  COALESCE(model.user_id, mcp.user_id),
+  COALESCE(NULLIF(owner.name, ''), NULLIF(owner.email, ''), NULLIF(owner.phone, ''), owner.user_id, model.user_id, mcp.user_id),
+  COALESCE(owner.status, 'active'),
+  COALESCE(model.session_count, 0),
+  COALESCE(model.turn_count, 0),
+  COALESCE(model.model_request_count, 0),
+  COALESCE(mcp.mcp_call_count, 0),
+  COALESCE(GREATEST(model.last_activity_at, mcp.last_activity_at), model.last_activity_at, mcp.last_activity_at)
+FROM external_ids ids
+LEFT JOIN model_agents model ON model.agent_id = ids.agent_id
+LEFT JOIN mcp_agents mcp ON mcp.agent_id = ids.agent_id
+LEFT JOIN accounts owner ON owner.user_id = COALESCE(model.user_id, mcp.user_id)
+ORDER BY 10 DESC NULLS LAST, ids.agent_id`, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := []activity.Agent{}
+	for rows.Next() {
+		var item activity.Agent
+		var lastActivity sql.NullTime
+		if err := rows.Scan(&item.AgentID, &item.ClientType, &item.EmployeeID, &item.EmployeeName, &item.Status,
+			&item.SessionCount, &item.TurnCount, &item.ModelRequestCount, &item.MCPCallCount, &lastActivity); err != nil {
+			return nil, err
+		}
+		item.External = true
+		if lastActivity.Valid {
+			value := lastActivity.Time
+			item.LastActivityAt = &value
+		}
+		item.Name = externalAgentName(item.ClientType)
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+func externalAgentName(clientType string) string {
+	switch clientType {
+	case "codex_cli":
+		return "Codex CLI"
+	case "claude_code":
+		return "Claude Code"
+	case "workbuddy":
+		return "WorkBuddy"
+	case "account_token":
+		return "账户级 MCP"
+	case "generic":
+		return "其他客户端"
+	default:
+		return clientType
+	}
 }
 
 func calendarDayCount(start, end time.Time) int64 {

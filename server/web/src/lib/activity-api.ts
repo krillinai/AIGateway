@@ -93,8 +93,12 @@ export type ActivityAgent = {
   agent_id: string;
   name: string;
   status: string;
+  external?: boolean;
+  client_type?: string;
   session_count: number;
   turn_count: number;
+  model_request_count?: number;
+  mcp_call_count?: number;
   last_activity_at?: string;
 };
 

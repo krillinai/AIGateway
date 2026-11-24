@@ -105,15 +105,19 @@ type EmployeeSkillUsage struct {
 }
 
 type Agent struct {
-	CollectorID    string     `json:"collector_id"`
-	AgentID        string     `json:"agent_id"`
-	Name           string     `json:"name"`
-	Status         string     `json:"status"`
-	EmployeeID     string     `json:"employee_id"`
-	EmployeeName   string     `json:"employee_name"`
-	SessionCount   int64      `json:"session_count"`
-	TurnCount      int64      `json:"turn_count"`
-	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
+	CollectorID       string     `json:"collector_id"`
+	AgentID           string     `json:"agent_id"`
+	Name              string     `json:"name"`
+	Status            string     `json:"status"`
+	External          bool       `json:"external,omitempty"`
+	ClientType        string     `json:"client_type,omitempty"`
+	EmployeeID        string     `json:"employee_id"`
+	EmployeeName      string     `json:"employee_name"`
+	SessionCount      int64      `json:"session_count"`
+	TurnCount         int64      `json:"turn_count"`
+	ModelRequestCount int64      `json:"model_request_count,omitempty"`
+	MCPCallCount      int64      `json:"mcp_call_count,omitempty"`
+	LastActivityAt    *time.Time `json:"last_activity_at,omitempty"`
 }
 
 type PlatformActivity struct {
