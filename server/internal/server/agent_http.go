@@ -168,7 +168,7 @@ func handleAgentTools(accountSvc *accounts.Service, proxyGateway *mcpgateway.Ser
 	}
 }
 
-func handleAgentMCPCatalog(accountSvc *accounts.Service, proxyGateway *mcpgateway.Service, dataAccessSvc *dataaccess.Service) gin.HandlerFunc {
+func handleAgentMCPCatalog(accountSvc *accounts.Service, proxyGateway *mcpgateway.Service, dataAccessSvc *dataaccess.Service, modelMode ModelAccessMode) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if hasUnsupportedAppAccountTokenQuery(c) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
@@ -182,6 +182,7 @@ func handleAgentMCPCatalog(accountSvc *accounts.Service, proxyGateway *mcpgatewa
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": errMCPGatewayProxyDisabled.Error()})
 			return
 		}
+		materializeExternalAgentsForUser(c.Request.Context(), Options{AccountService: accountSvc, ProxyGateway: proxyGateway, ModelAccessMode: modelMode}, account.UserID)
 		var agent mcpgateway.AgentRegistration
 		if principal, principalOK := currentPrincipal(c); principalOK && principal.ClientID == accounts.ClientClaweeAgent {
 			if boundAgent, boundAgentOK := currentClaweeAgent(c); boundAgentOK {
@@ -299,6 +300,7 @@ func handleAgentList(accountSvc *accounts.Service, proxyGateway *mcpgateway.Serv
 			c.JSON(http.StatusOK, itemsResponse([]gin.H{item}))
 			return
 		}
+		materializeExternalAgentsForUser(c.Request.Context(), Options{AccountService: accountSvc, ProxyGateway: proxyGateway, ModelAccessMode: modelMode}, account.UserID)
 		ids, err := accountSvc.AgentIDs(c.Request.Context(), account.UserID)
 		if err != nil {
 			agentAPIError(c, err)
@@ -306,6 +308,9 @@ func handleAgentList(accountSvc *accounts.Service, proxyGateway *mcpgateway.Serv
 		}
 		items := make([]gin.H, 0, len(ids))
 		for _, id := range ids {
+			if isAccountTokenAgentID(id) {
+				continue
+			}
 			agent, err := proxyGateway.Store().GetAgent(c.Request.Context(), id)
 			if err != nil {
 				agentAPIError(c, err)
@@ -588,7 +593,7 @@ func agentAPIError(c *gin.Context, err error) {
 }
 
 func agentAccessResponse(agent mcpgateway.AgentRegistration) gin.H {
-	return gin.H{
+	response := gin.H{
 		"agent_id":        agent.AgentID,
 		"client_id":       agent.ClientID,
 		"tenant_id":       agent.TenantID,
@@ -615,6 +620,14 @@ func agentAccessResponse(agent mcpgateway.AgentRegistration) gin.H {
 		"createdAt":       agent.CreatedAt,
 		"updatedAt":       agent.UpdatedAt,
 	}
+	if agent.CreationSource == mcpgateway.AgentCreationSourceExternal {
+		response["external"] = true
+		response["External"] = true
+		response["external_client_type"] = agent.ClientID
+		response["ExternalClientType"] = agent.ClientID
+		response["externalClientType"] = agent.ClientID
+	}
+	return response
 }
 
 func accountTokenMetadataResponse(token mcpgateway.AccountToken) gin.H {
@@ -704,7 +717,7 @@ func mountAgentRoutes(app *gin.RouterGroup, opts Options) {
 	rotateToken := handleRotateAccountToken(opts.ProxyGateway)
 	revokeToken := handleRevokeAccountToken(opts.ProxyGateway)
 	tools := handleAgentTools(opts.AccountService, opts.ProxyGateway)
-	mcpCatalog := handleAgentMCPCatalog(opts.AccountService, opts.ProxyGateway, opts.DataAccessService)
+	mcpCatalog := handleAgentMCPCatalog(opts.AccountService, opts.ProxyGateway, opts.DataAccessService, opts.ModelAccessMode)
 
 	app.GET("/agents", list)
 	app.GET("/agents/detail", detail)

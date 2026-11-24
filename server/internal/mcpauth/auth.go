@@ -79,14 +79,37 @@ func verifyAccountToken(ctx context.Context, store mcpgateway.Store, accountSvc 
 		agentID = strings.TrimSpace(req.Header.Get("X-Claw-Agent-ID"))
 	}
 	if agentID == "" {
+		agentID = externalAgentIDFromRequest(req, entry.UserID)
+	}
+	if agentID == "" {
 		return invalid()
 	}
 	owner, err := accountSvc.AccountForAgent(ctx, agentID)
 	if err != nil {
-		if errors.Is(err, accounts.ErrAccountAgentNotFound) {
+		if !errors.Is(err, accounts.ErrAccountAgentNotFound) {
+			return nil, err
+		}
+		clientType, ownerUserID, external := mcpgateway.ParseExternalAgentID(agentID)
+		if !external || ownerUserID != entry.UserID {
 			return invalid()
 		}
-		return nil, err
+		if err := store.CreateOwnedAgent(ctx, entry.UserID, mcpgateway.AgentRegistration{
+			AgentID:        agentID,
+			ClientID:       clientType,
+			Name:           externalAgentName(clientType),
+			ActorID:        entry.UserID,
+			Status:         mcpgateway.StatusActive,
+			CreationSource: mcpgateway.AgentCreationSourceExternal,
+		}); err != nil && !errors.Is(err, mcpgateway.ErrAgentAlreadyExists) {
+			return nil, err
+		}
+		if err := accountSvc.BindAgent(ctx, entry.UserID, agentID); err != nil {
+			return nil, err
+		}
+		owner, err = accountSvc.AccountForAgent(ctx, agentID)
+		if err != nil {
+			return invalid()
+		}
 	}
 	if owner.UserID != entry.UserID {
 		return invalid()
@@ -121,6 +144,40 @@ func verifyAccountToken(ctx context.Context, store mcpgateway.Store, accountSvc 
 			"jti":       entry.ID,
 		},
 	}, nil
+}
+
+func externalAgentIDFromRequest(req *http.Request, userID string) string {
+	if req == nil {
+		return ""
+	}
+	for _, name := range []string{"X-Client-Type", "X-Client-Product", "X-Client-Name", "X-Ide-Name", "X-Ide-Type"} {
+		if clientType := externalClientType(req.Header.Get(name)); clientType != "" {
+			return mcpgateway.ExternalAgentID(clientType, userID)
+		}
+	}
+	if clientType := externalClientType(req.UserAgent()); clientType != "" {
+		return mcpgateway.ExternalAgentID(clientType, userID)
+	}
+	return mcpgateway.ExternalAgentID(mcpgateway.ExternalAgentClientAccount, userID)
+}
+
+func externalAgentName(clientType string) string {
+	if clientType == mcpgateway.ExternalAgentClientAccount {
+		return "账户级 MCP"
+	}
+	return clientType
+}
+
+func externalClientType(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.Contains(value, "workbuddy"):
+		return mcpgateway.ModelActivityClientWorkBuddy
+	case strings.Contains(value, "codex"):
+		return mcpgateway.ModelActivityClientCodex
+	default:
+		return ""
+	}
 }
 
 func IdentityFromTokenInfo(info *auth.TokenInfo) (mcpgateway.AgentIdentity, error) {

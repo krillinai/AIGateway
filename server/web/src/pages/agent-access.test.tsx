@@ -126,14 +126,18 @@ describe("AgentAccessPage", () => {
     expect(screen.queryByRole("region", { name: "MCP 配置" })).not.toBeInTheDocument();
   });
 
-  it("展示外部客户端并隐藏不适用的 MCP 身份操作", async () => {
+  it("展示外部客户端并生成带外部 Agent ID 的 MCP 配置", async () => {
     listMyAgentsMock.mockResolvedValueOnce([externalAccess("codex_cli", "Codex CLI")]);
     renderPage();
 
     const row = await findRowByText("codex_cli");
     expect(within(row).getByText("Codex CLI")).toBeInTheDocument();
     expect(within(row).getByText("外部客户端")).toBeInTheDocument();
-    expect(within(row).queryByRole("button", { name: /密钥详情/ })).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "查看 Codex CLI 密钥详情" }));
+    expect(await screen.findByRole("heading", { name: "账户级密钥与接入配置" })).toBeInTheDocument();
+    await waitFor(() => expect(revealMyAccountTokenMock).toHaveBeenCalledTimes(1));
+    const config = await screen.findByRole("region", { name: "MCP 配置" });
+    expect(config).toHaveTextContent("external:codex_cli:usr_user");
     expect(within(row).queryByRole("button", { name: /编辑/ })).not.toBeInTheDocument();
     expect(within(row).queryByRole("button", { name: /删除/ })).not.toBeInTheDocument();
   });

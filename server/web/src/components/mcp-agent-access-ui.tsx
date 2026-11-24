@@ -124,7 +124,7 @@ export function MCPAgentTokenTable({
                 <TableCell className="border-b border-border px-3 py-3">
                   <TooltipProvider>
                     <div className="flex flex-wrap items-center gap-2">
-                      {!agent.external ? (
+                      {!agent.external || mode === "user" ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -248,7 +248,7 @@ export function MCPAgentTokenDrawer({
   const allowTokenSecrets = allowReveal || allowRotate;
   const isActive = tokenInfo?.tokenStatus === "active";
   const isCopyDisabled = !isActive || tokenPending || !tokenResult;
-  const mcpConfig = tokenResult && agent && !agent.external ? accountMCPConfig(tokenResult.token, agent.agentId) : undefined;
+  const mcpConfig = tokenResult && agent ? accountMCPConfig(tokenResult.token, agent.agentId) : undefined;
 
   return (
     <DetailDrawer contextLabel="账户级密钥" onClose={onClose} open={open} subtitle={agent?.agentId ?? "当前账户"} title="账户级密钥与接入配置">

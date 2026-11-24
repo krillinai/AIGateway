@@ -94,6 +94,50 @@ func TestAccountTokenVerifierAcceptsOwnedActiveAgent(t *testing.T) {
 	}
 }
 
+func TestAccountTokenVerifierMaterializesExternalAgent(t *testing.T) {
+	ctx := context.Background()
+	accountSvc, store, accountStore := accountTokenVerifierFixture(t, accounts.StatusActive, mcpgateway.StatusActive)
+	if err := accountStore.DeleteAccountAgent(ctx, "agent_owned"); err != nil {
+		t.Fatal(err)
+	}
+	verifier := NewStaticTokenVerifier(Config{AccountTokenStore: store, AccountService: accountSvc})
+	agentID := mcpgateway.ExternalAgentID(mcpgateway.ModelActivityClientWorkBuddy, "usr_owner")
+	req := httptest.NewRequest("POST", "/mcp", nil)
+	req.Header.Set("X-Claw-Agent-ID", agentID)
+	info, err := verifier(ctx, "account-token", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := IdentityFromTokenInfo(info)
+	if err != nil || identity.AgentID != agentID {
+		t.Fatalf("identity = %#v, error = %v", identity, err)
+	}
+	agent, err := store.GetAgent(ctx, agentID)
+	if err != nil || agent.Status != mcpgateway.StatusActive {
+		t.Fatalf("external agent = %#v, error = %v", agent, err)
+	}
+}
+
+func TestAccountTokenVerifierInfersWorkBuddyAgentFromClientHeader(t *testing.T) {
+	ctx := context.Background()
+	accountSvc, store, accountStore := accountTokenVerifierFixture(t, accounts.StatusActive, mcpgateway.StatusActive)
+	if err := accountStore.DeleteAccountAgent(ctx, "agent_owned"); err != nil {
+		t.Fatal(err)
+	}
+	verifier := NewStaticTokenVerifier(Config{AccountTokenStore: store, AccountService: accountSvc})
+	req := httptest.NewRequest("POST", "/mcp", nil)
+	req.Header.Set("X-Client-Product", "WorkBuddy")
+	info, err := verifier(ctx, "account-token", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := IdentityFromTokenInfo(info)
+	want := mcpgateway.ExternalAgentID(mcpgateway.ModelActivityClientWorkBuddy, "usr_owner")
+	if err != nil || identity.AgentID != want {
+		t.Fatalf("identity = %#v, error = %v, want agent=%q", identity, err, want)
+	}
+}
+
 func TestAccountTokenVerifierRejectsInvalidAccountOrAgentContext(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -101,7 +145,6 @@ func TestAccountTokenVerifierRejectsInvalidAccountOrAgentContext(t *testing.T) {
 		agentStatus   string
 		header        string
 	}{
-		{name: "missing header", accountStatus: accounts.StatusActive, agentStatus: mcpgateway.StatusActive},
 		{name: "disabled account", accountStatus: accounts.StatusDisabled, agentStatus: mcpgateway.StatusActive, header: "agent_owned"},
 		{name: "disabled agent", accountStatus: accounts.StatusActive, agentStatus: mcpgateway.StatusDisabled, header: "agent_owned"},
 		{name: "unknown agent", accountStatus: accounts.StatusActive, agentStatus: mcpgateway.StatusActive, header: "agent_unknown"},
@@ -118,6 +161,24 @@ func TestAccountTokenVerifierRejectsInvalidAccountOrAgentContext(t *testing.T) {
 				t.Fatal("invalid account or agent context was accepted")
 			}
 		})
+	}
+}
+
+func TestAccountTokenVerifierFallsBackToAccountIdentity(t *testing.T) {
+	ctx := context.Background()
+	accountSvc, store, accountStore := accountTokenVerifierFixture(t, accounts.StatusActive, mcpgateway.StatusActive)
+	if err := accountStore.DeleteAccountAgent(ctx, "agent_owned"); err != nil {
+		t.Fatal(err)
+	}
+	verifier := NewStaticTokenVerifier(Config{AccountTokenStore: store, AccountService: accountSvc})
+	info, err := verifier(ctx, "account-token", httptest.NewRequest("POST", "/mcp", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := IdentityFromTokenInfo(info)
+	want := mcpgateway.ExternalAgentID(mcpgateway.ExternalAgentClientAccount, "usr_owner")
+	if err != nil || identity.AgentID != want {
+		t.Fatalf("identity = %#v, error = %v, want agent=%q", identity, err, want)
 	}
 }
 

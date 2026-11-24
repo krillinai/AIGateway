@@ -258,6 +258,10 @@ func agentListItem(ctx context.Context, accountSvc *accounts.Service, collectorL
 			item["BoundUserEmail"] = account.Email
 		}
 	}
+	if agent.CreationSource == mcpgateway.AgentCreationSourceExternal {
+		item["External"] = true
+		item["ExternalClientType"] = agent.ClientID
+	}
 	return item, nil
 }
 
@@ -302,7 +306,13 @@ func externalAgentListItemsForUser(ctx context.Context, opts Options, status, us
 			if err != nil || (status != "" && account.Status != status) {
 				continue
 			}
-			agentID := "external:" + clientType + ":" + activity.UserID
+			agentID := mcpgateway.ExternalAgentID(clientType, activity.UserID)
+			if agentID == "" {
+				continue
+			}
+			if _, err := opts.ProxyGateway.Store().GetAgent(ctx, agentID); err == nil {
+				continue
+			}
 			lastActivityAt := activity.LastRequestAt.UTC()
 			items = append(items, gin.H{
 				"AgentID":              agentID,

@@ -200,6 +200,49 @@ func TestAgentMCPCatalogReturnsEmptyForAccountWithoutAgents(t *testing.T) {
 	}
 }
 
+func TestAgentMCPCatalogMaterializesExternalAgent(t *testing.T) {
+	ctx := context.Background()
+	accountSvc := newTestAccountService(accounts.NewMemoryStore())
+	owner, err := accountSvc.Register(ctx, accounts.RegisterRequest{Email: "external-catalog@example.com", Name: "External Catalog", Password: "passw0rd!"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := accountSvc.IssueTokens(ctx, owner.Account, []accounts.TokenRequest{{Audience: accounts.AudienceFrontend, ClientID: accounts.ClientWeb}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyStore := mcpgateway.NewMemoryStore()
+	proxyGateway := testProxyGateway(proxyStore)
+	if err := proxyStore.SaveUpstreamServer(ctx, mcpgateway.UpstreamServer{ID: "crm-main", Name: "CRM", Transport: mcpgateway.TransportStreamableHTTP, Status: mcpgateway.StatusActive}); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxyStore.SaveCapability(ctx, mcpgateway.Capability{ID: "cap_search", UpstreamServerID: "crm-main", Type: mcpgateway.CapabilityTool, ExposedName: "crm.customer.search", Status: mcpgateway.StatusActive}); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxyStore.SaveGrant(ctx, mcpgateway.AccountGrant{ID: "grant_search", UserID: owner.Account.UserID, CapabilityID: "cap_search", GrantType: mcpgateway.GrantTool}); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxyStore.CreateModelProxyAuditRecord(ctx, mcpgateway.ModelProxyAuditRecord{
+		AuditID: "external-catalog-audit", UserID: owner.Account.UserID, ClientType: mcpgateway.ModelActivityClientWorkBuddy,
+		Endpoint: "/v1/chat/completions", Method: "POST", Status: mcpgateway.ModelProxyAuditSucceeded,
+		CreatedAt: time.Now().UTC(), ActivityContent: &mcpgateway.ModelActivityContent{SchemaVersion: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	router := server.NewRouter(server.Options{AccountService: accountSvc, ProxyGateway: proxyGateway, ModelAccessMode: server.ModelAccessPlatformManaged})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/app/mcp/catalog", nil)
+	req.AddCookie(&http.Cookie{Name: "claw_front_token", Value: tokens.Token(accounts.AudienceFrontend).Token})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "crm.customer.search") {
+		t.Fatalf("catalog status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	agentID, err := accountSvc.PrimaryAgentID(ctx, owner.Account.UserID)
+	if err != nil || agentID != mcpgateway.ExternalAgentID(mcpgateway.ModelActivityClientWorkBuddy, owner.Account.UserID) {
+		t.Fatalf("primary external agent=%q error=%v", agentID, err)
+	}
+}
+
 func TestUpdateAgentNameOnlyUpdatesOwnedAgentName(t *testing.T) {
 	ctx := context.Background()
 	accountSvc := newTestAccountService(accounts.NewMemoryStore())
