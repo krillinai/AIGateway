@@ -54,7 +54,7 @@ const fixtureStatistics: ActivityStatistics = {
   ],
   agents: [
     { collector_id: "collector 1", agent_id: "hermes/c03", name: "Hermes C03", status: "online", session_count: 4, turn_count: 12, last_activity_at: "2026-08-13T03:00:00Z" },
-    { collector_id: "", agent_id: "external:workbuddy:user-1", name: "WorkBuddy", status: "active", external: true, client_type: "workbuddy", session_count: 2, turn_count: 3, model_request_count: 5, mcp_call_count: 4, last_activity_at: "2026-08-13T04:00:00Z" },
+    { collector_id: "", agent_id: "external:workbuddy:user-1", name: "WorkBuddy", status: "active", external: true, client_type: "workbuddy", employee_id: "user-1", employee_name: "张三", session_count: 2, turn_count: 3, model_request_count: 5, mcp_call_count: 4, last_activity_at: "2026-08-13T04:00:00Z" },
   ],
   data_status: { model_usage: "available", activity: "available" },
 };
@@ -102,6 +102,7 @@ describe("AppActivityPage", () => {
     expect(screen.queryByText(/sub2api/i)).not.toBeInTheDocument();
     expect(screen.getByText("Hermes C03")).toBeInTheDocument();
     const externalRow = screen.getByRole("row", { name: /WorkBuddy external:workbuddy:user-1/ });
+    expect(within(externalRow).getByText("所属账户：张三")).toBeInTheDocument();
     expect(within(externalRow).getByText("外部客户端 · WorkBuddy")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "模型调用" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "MCP 调用" })).toBeInTheDocument();

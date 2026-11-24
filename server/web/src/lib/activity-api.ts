@@ -95,6 +95,8 @@ export type ActivityAgent = {
   status: string;
   external?: boolean;
   client_type?: string;
+  employee_id?: string;
+  employee_name?: string;
   session_count: number;
   turn_count: number;
   model_request_count?: number;

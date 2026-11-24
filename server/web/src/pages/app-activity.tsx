@@ -398,7 +398,7 @@ function AgentActivityTable({ agents }: { agents: ActivityAgent[] }) {
                 const detailHref = `/app/activity/detail?collector_id=${encodeURIComponent(agent.collector_id)}&agent_id=${encodeURIComponent(agent.agent_id)}`;
                 return (
                   <TableRow key={`${agent.collector_id}:${agent.agent_id}`}>
-                    <TableCell className="pl-6"><div className="font-medium">{agent.name}</div><div className="font-mono text-xs text-muted-foreground">{agent.agent_id}</div>{external ? <Badge className="mt-1" variant="outline">外部客户端{agent.client_type ? ` · ${externalClientLabel(agent.client_type)}` : ""}</Badge> : null}</TableCell>
+                    <TableCell className="pl-6"><div className="font-medium">{agent.name}</div><div className="font-mono text-xs text-muted-foreground">{agent.agent_id}</div>{external ? <><div className="text-xs text-muted-foreground">所属账户：{agent.employee_name || agent.employee_id || "未归属账户"}</div><Badge className="mt-1" variant="outline">外部客户端{agent.client_type ? ` · ${externalClientLabel(agent.client_type)}` : ""}</Badge></> : null}</TableCell>
                     <TableCell><Badge variant={agent.status === "online" || agent.status === "active" ? "success" : "muted"}>{mcpStatusLabel(agent.status)}</Badge></TableCell>
                     <TableCell className="text-right font-mono">{formatInteger(agent.session_count)}</TableCell>
                     <TableCell className="text-right font-mono">{formatInteger(agent.turn_count)}</TableCell>
