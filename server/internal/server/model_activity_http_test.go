@@ -20,7 +20,7 @@ func TestModelActivityAPIContracts(t *testing.T) {
 	router := newTestRouter(t, server.Options{ProxyGateway: testProxyGateway(store), ActivityService: activityService})
 	now := time.Now().UTC()
 	content := &mcpgateway.ModelActivityContent{SchemaVersion: 1, InputText: "用户文本", OutputText: "助手文本", InputStatus: "available", OutputStatus: "available"}
-	record := mcpgateway.ModelProxyAuditRecord{AuditID: "p2", UserID: testAdminUserID(t, router), Endpoint: "/v1/responses", Method: "POST", CreatedAt: now, Status: mcpgateway.ModelProxyAuditStarted, ActivityContent: content, APIKeyID: "must_not_return", RequestHeaders: mcpgateway.JSONMap{"secret": "must_not_return"}, RequestBody: mcpgateway.JSONMap{"raw": "must_not_return"}}
+	record := mcpgateway.ModelProxyAuditRecord{AuditID: "p2", UserID: testAdminUserID(t, router), Endpoint: "/v1/responses", Method: "POST", CreatedAt: now, Status: mcpgateway.ModelProxyAuditStarted, ActivityContent: content, APIKeyID: "must_not_return", RequestHeaders: mcpgateway.JSONMap{"secret": "must_not_return"}, RequestBody: mcpgateway.JSONMap{"raw": "must_not_return"}, ResponseBody: mcpgateway.JSONMap{"content_type": "text/event-stream", "events": []any{map[string]any{"type": "response.output_item.added", "output_index": float64(0), "item": map[string]any{"type": "custom_tool_call", "id": "tool_1", "call_id": "call_1", "name": "exec"}}, map[string]any{"type": "response.custom_tool_call_input.delta", "item_id": "tool_1", "delta": "{\"cmd\":\"pwd\"}"}}}}
 	if err := store.CreateModelProxyAuditRecord(context.Background(), record); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +63,19 @@ func TestModelActivityAPIContracts(t *testing.T) {
 				}
 			}
 		})
+	}
+	detailRecorder := httptest.NewRecorder()
+	router.ServeHTTP(detailRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/admin/activity/model-requests/detail?audit_id=p2", nil))
+	var detailResponse struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(detailRecorder.Body.Bytes(), &detailResponse); err != nil {
+		t.Fatal(err)
+	}
+	activityContent, _ := detailResponse.Data["activity_content"].(map[string]any)
+	toolCalls, _ := activityContent["tool_calls"].([]any)
+	if len(toolCalls) != 1 || toolCalls[0].(map[string]any)["name"] != "exec" {
+		t.Fatalf("详情未返回历史工具调用: %#v", activityContent)
 	}
 	// 详情与时间范围无关，历史采集记录仍可直达。
 	historical := record

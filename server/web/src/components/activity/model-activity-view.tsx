@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useModelActivityOverview, useModelRequestDetail, useModelRequests } from "@/hooks/useModelActivity";
-import type { ModelActivityContent, ModelActivityFilter, ModelActivityStats, ModelRequest, ModelRequestCursor, ModelRequestPreview } from "@/lib/model-activity-api";
+import type { ModelActivityContent, ModelActivityFilter, ModelActivityStats, ModelActivityToolCall, ModelRequest, ModelRequestCursor, ModelRequestPreview } from "@/lib/model-activity-api";
 
 const count = (value: number | null | undefined) => value == null ? "--" : value.toLocaleString();
 const date = (value: string | null) => value ? new Date(value).toLocaleString() : "--";
@@ -95,7 +95,7 @@ function ModelActivityRequests({ filter }: { filter: ModelActivityFilter }) {
     </div> : null}
     <div className="mt-3 flex items-center gap-3"><Button variant="outline" disabled={cursors.length === 1 || query.isFetching} onClick={() => setCursors(cursors.slice(0, -1))}>上一页</Button><span>第 {cursors.length} 页</span><Button variant="outline" disabled={!query.data?.meta.next_id || query.isFetching} onClick={() => { if (query.data?.meta.next_created_at) setCursors([...cursors, { cursor_created_at: query.data.meta.next_created_at, cursor_id: query.data.meta.next_id }]); }}>下一页</Button></div>
     <DetailDrawer open={Boolean(auditId)} onClose={() => change({ audit_id: "" })} title="模型调用内容" subtitle="请求中的用户输入摘录和助手文本输出">
-      {detail.isLoading ? <p>加载中</p> : detail.isError ? <ErrorAlert error={detail.error}>内容加载失败</ErrorAlert> : detail.data ? <div className="grid min-w-0 gap-4 text-sm"><p>{detail.data.user_name} · {detail.data.agent_name} · {requestStatus(detail.data)}</p><p>{detail.data.model} · {date(detail.data.created_at)}<br />Token：{count(detail.data.total_tokens)} · 耗时：{count(detail.data.duration_ms)} ms{detail.data.usage_status !== "complete" ? ` · 用量${detail.data.usage_status === "partial" ? "部分可用" : "缺失"}` : ""}</p><p className="break-all">客户端：{detail.data.client_type || "unknown"}<br />会话：{detail.data.session_id || "--"}<br />轮次：{detail.data.turn_id || "--"}</p>{detail.data.error_code ? <p>{failureHints[detail.data.error_code] ?? "模型调用失败"}（{detail.data.error_code}）</p> : null}<ActivityText content={detail.data.activity_content} input /><ActivityText content={detail.data.activity_content} /></div> : null}
+      {detail.isLoading ? <p>加载中</p> : detail.isError ? <ErrorAlert error={detail.error}>内容加载失败</ErrorAlert> : detail.data ? <div className="grid min-w-0 gap-4 text-sm"><p>{detail.data.user_name} · {detail.data.agent_name} · {requestStatus(detail.data)}</p><p>{detail.data.model} · {date(detail.data.created_at)}<br />Token：{count(detail.data.total_tokens)} · 耗时：{count(detail.data.duration_ms)} ms{detail.data.usage_status !== "complete" ? ` · 用量${detail.data.usage_status === "partial" ? "部分可用" : "缺失"}` : ""}</p><p className="break-all">客户端：{detail.data.client_type || "unknown"}<br />会话：{detail.data.session_id || "--"}<br />轮次：{detail.data.turn_id || "--"}</p>{detail.data.error_code ? <p>{failureHints[detail.data.error_code] ?? "模型调用失败"}（{detail.data.error_code}）</p> : null}<ActivityText content={detail.data.activity_content} input /><ActivityText content={detail.data.activity_content} />{detail.data.activity_content.tool_calls?.length ? <ActivityToolCalls calls={detail.data.activity_content.tool_calls} /> : null}</div> : null}
     </DetailDrawer>
   </PageShell>;
 }
@@ -185,10 +185,11 @@ function ModelRequestItem({ request, onOpen }: { request: ModelRequestPreview; o
         <Badge variant={statusVariant}>{requestStatus(request)}</Badge>
         <span>{count(request.total_tokens)} Token</span>
         <span>{count(request.duration_ms)} ms</span>
+        {request.tool_call_count ? <span>工具调用 {count(request.tool_call_count)} 次</span> : null}
       </div>
       <div className="grid min-w-0 gap-2 text-sm md:grid-cols-2">
         <div className="min-w-0"><div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground"><MessageSquareText className="size-3.5" aria-hidden="true" />请求</div><p className="whitespace-pre-wrap break-words leading-6">{request.input_preview || "用户输入摘录不可用"}</p></div>
-        <div className="min-w-0"><div className="mb-1 text-xs font-medium text-muted-foreground">响应</div><p className="whitespace-pre-wrap break-words leading-6">{request.output_preview || (request.output_status === "pending" ? "等待输出" : "本次无文本输出")}</p></div>
+        <div className="min-w-0"><div className="mb-1 text-xs font-medium text-muted-foreground">响应</div><p className="whitespace-pre-wrap break-words leading-6">{request.output_preview || (request.tool_call_count ? `本次包含 ${request.tool_call_count} 次工具调用` : request.output_status === "pending" ? "等待输出" : "本次无文本输出")}</p></div>
       </div>
       {request.error_code || request.output_status === "partial" || request.usage_status !== "complete" || request.input_truncated || request.output_truncated ? <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {request.error_code ? <span className="text-destructive">{failureHints[request.error_code] ?? "模型调用失败"}（{request.error_code}）</span> : null}
@@ -208,5 +209,14 @@ function sumKnownTokens(requests: ModelRequestPreview[]) {
 function ActivityText({ content, input = false }: { content: ModelActivityContent; input?: boolean }) {
   const text = input ? content.input_text : content.output_text;
   const truncated = input ? content.input_truncated : content.output_truncated;
-  return <section className="min-w-0"><h3 className="mb-2 font-medium">{input ? "用户输入摘录" : "助手输出"}</h3><pre className="whitespace-pre-wrap break-words font-sans">{text || (input ? "本次请求没有可读用户文本" : content.output_status === "pending" ? "等待输出" : "本次无文本输出")}</pre>{!input && content.output_status === "partial" ? <p>部分输出：响应未完整结束或包含流错误。</p> : null}{truncated ? <p>内容已截断，最多保存 8000 个字符。</p> : null}</section>;
+  return <section className="min-w-0"><h3 className="mb-2 font-medium">{input ? "用户输入摘录" : "助手输出"}</h3><pre className="whitespace-pre-wrap break-words font-sans">{text || (input ? "本次请求没有可读用户文本" : content.tool_calls?.length ? "本次响应包含工具调用，详见下方工具调用" : content.output_status === "pending" ? "等待输出" : "本次无文本输出")}</pre>{!input && content.output_status === "partial" ? <p>部分输出：响应未完整结束或包含流错误。</p> : null}{truncated ? <p>内容已截断，最多保存 8000 个字符。</p> : null}</section>;
+}
+
+function ActivityToolCalls({ calls }: { calls: ModelActivityToolCall[] }) {
+  return <section className="min-w-0"><h3 className="mb-2 font-medium">工具调用（{calls.length}）</h3><div className="grid gap-3">{calls.map((call, index) => <article className="min-w-0 rounded-md border border-border bg-muted/20 p-3" key={`${call.call_id || call.id || call.name || "tool"}-${index}`}>
+    <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm"><span className="font-medium">{call.name || "未命名工具"}</span><Badge variant="muted">{call.type}</Badge>{call.status ? <span className="text-xs text-muted-foreground">{call.status}</span> : null}</div>
+    {call.call_id || call.id ? <p className="mt-1 break-all font-mono text-xs text-muted-foreground">调用 ID：{call.call_id || call.id}</p> : null}
+    <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words font-sans text-sm">{call.input_text || "工具未提供输入参数"}</pre>
+    {call.input_truncated ? <p className="mt-2 text-xs text-muted-foreground">工具输入已截断，最多保存 4000 个字符。</p> : null}
+  </article>)}</div></section>;
 }

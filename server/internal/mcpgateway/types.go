@@ -431,14 +431,25 @@ const (
 	ModelProxyUsageSourceUnavailable ModelProxyUsageSource = "unavailable"
 )
 
+type ModelActivityToolCall struct {
+	Type           string `json:"type"`
+	ID             string `json:"id,omitempty"`
+	CallID         string `json:"call_id,omitempty"`
+	Name           string `json:"name,omitempty"`
+	InputText      string `json:"input_text,omitempty"`
+	InputTruncated bool   `json:"input_truncated,omitempty"`
+	Status         string `json:"status,omitempty"`
+}
+
 type ModelActivityContent struct {
-	SchemaVersion   int    `json:"schema_version"`
-	InputText       string `json:"input_text"`
-	OutputText      string `json:"output_text"`
-	InputStatus     string `json:"input_status"`
-	OutputStatus    string `json:"output_status"`
-	InputTruncated  bool   `json:"input_truncated"`
-	OutputTruncated bool   `json:"output_truncated"`
+	SchemaVersion   int                     `json:"schema_version"`
+	InputText       string                  `json:"input_text"`
+	OutputText      string                  `json:"output_text"`
+	InputStatus     string                  `json:"input_status"`
+	OutputStatus    string                  `json:"output_status"`
+	InputTruncated  bool                    `json:"input_truncated"`
+	OutputTruncated bool                    `json:"output_truncated"`
+	ToolCalls       []ModelActivityToolCall `json:"tool_calls,omitempty"`
 }
 
 const (

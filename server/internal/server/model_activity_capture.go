@@ -17,6 +17,8 @@ import (
 
 const modelActivityTextLimit = 8000
 const modelActivityEventLimit = 64 << 10
+const modelActivityToolInputLimit = 4000
+const modelActivityToolCallLimit = 64
 
 func modelActivityID(value string) string {
 	if !utf8.ValidString(value) {
@@ -224,6 +226,102 @@ type modelActivityCapture struct {
 	failed     bool
 	blocks     map[modelActivityBlockKey]string
 	size       int
+	toolCalls  []mcpgateway.ModelActivityToolCall
+	toolIndex  map[string]int
+}
+
+func modelActivityTextWithLimit(text string, limit int) (string, bool) {
+	text = strings.ToValidUTF8(text, "")
+	text = claweeactivity.RedactText(text)
+	return limitActivityText(text, limit)
+}
+
+func activityString(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	if value == nil {
+		return ""
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func modelActivityToolType(value string) bool {
+	return strings.HasSuffix(value, "_call") || value == "function_call"
+}
+
+func (a *modelActivityCapture) upsertToolCall(key string, call mcpgateway.ModelActivityToolCall, appendInput bool) {
+	if key == "" {
+		return
+	}
+	if a.toolIndex == nil {
+		a.toolIndex = make(map[string]int)
+	}
+	index, exists := a.toolIndex[key]
+	if !exists {
+		if len(a.toolCalls) >= modelActivityToolCallLimit {
+			return
+		}
+		index = len(a.toolCalls)
+		a.toolIndex[key] = index
+		a.toolCalls = append(a.toolCalls, mcpgateway.ModelActivityToolCall{})
+	}
+	existing := &a.toolCalls[index]
+	if call.Type != "" {
+		existing.Type = call.Type
+	}
+	if call.ID != "" {
+		existing.ID = call.ID
+	}
+	if call.CallID != "" {
+		existing.CallID = call.CallID
+	}
+	if call.Name != "" {
+		existing.Name = call.Name
+	}
+	if call.Status != "" {
+		existing.Status = call.Status
+	}
+	if call.InputText != "" {
+		input := call.InputText
+		if appendInput {
+			input = existing.InputText + input
+		}
+		bounded, truncated := modelActivityTextWithLimit(input, modelActivityToolInputLimit)
+		existing.InputText = bounded
+		existing.InputTruncated = existing.InputTruncated || truncated
+	}
+}
+
+func (a *modelActivityCapture) captureToolItem(item map[string]any, outputIndex any) {
+	kind, _ := item["type"].(string)
+	if !modelActivityToolType(kind) {
+		return
+	}
+	call := mcpgateway.ModelActivityToolCall{Type: kind, ID: activityString(item["id"]), CallID: activityString(item["call_id"]), Name: activityString(item["name"]), Status: activityString(item["status"])}
+	if call.Name == "" {
+		if function, ok := item["function"].(map[string]any); ok {
+			call.Name = activityString(function["name"])
+		}
+	}
+	for _, field := range []string{"arguments", "input"} {
+		if input := activityString(item[field]); input != "" {
+			call.InputText = input
+			break
+		}
+	}
+	key := call.ID
+	if key == "" {
+		key = call.CallID
+	}
+	if key == "" {
+		key = fmt.Sprintf("output:%d", activityIndex(outputIndex))
+	}
+	a.upsertToolCall(key, call, false)
 }
 
 func (a *modelActivityCapture) setBlock(key modelActivityBlockKey, text string, appendText bool) {
@@ -316,6 +414,7 @@ func (a *modelActivityCapture) consumeEvent(data []byte) {
 			if text, ok := delta["content"].(string); ok {
 				a.setBlock(modelActivityBlockKey{}, text, true)
 			}
+			a.captureChatToolCalls(delta)
 		}
 		if value["error"] != nil {
 			a.failed = true
@@ -325,6 +424,20 @@ func (a *modelActivityCapture) consumeEvent(data []byte) {
 	kind, _ := value["type"].(string)
 	key := modelActivityBlockKey{activityIndex(value["output_index"]), activityIndex(value["content_index"])}
 	switch kind {
+	case "response.output_item.added", "response.output_item.done":
+		item, _ := value["item"].(map[string]any)
+		a.captureToolItem(item, value["output_index"])
+	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta", "response.mcp_call_arguments.delta":
+		itemID := activityString(value["item_id"])
+		input := activityString(value["delta"])
+		a.upsertToolCall(itemID, mcpgateway.ModelActivityToolCall{Type: toolCallTypeForEvent(kind), ID: itemID, InputText: input}, true)
+	case "response.function_call_arguments.done", "response.custom_tool_call_input.done", "response.mcp_call_arguments.done":
+		itemID := activityString(value["item_id"])
+		input := activityString(value["arguments"])
+		if input == "" {
+			input = activityString(value["input"])
+		}
+		a.upsertToolCall(itemID, mcpgateway.ModelActivityToolCall{Type: toolCallTypeForEvent(kind), ID: itemID, InputText: input}, false)
 	case "response.output_text.delta":
 		if text, ok := value["delta"].(string); ok {
 			a.setBlock(key, text, true)
@@ -342,10 +455,43 @@ func (a *modelActivityCapture) consumeEvent(data []byte) {
 	}
 }
 
+func toolCallTypeForEvent(kind string) string {
+	switch {
+	case strings.Contains(kind, "custom_tool"):
+		return "custom_tool_call"
+	case strings.Contains(kind, "mcp_call"):
+		return "mcp_call"
+	default:
+		return "function_call"
+	}
+}
+
+func (a *modelActivityCapture) captureChatToolCalls(delta map[string]any) {
+	toolCalls, _ := delta["tool_calls"].([]any)
+	for _, raw := range toolCalls {
+		toolCall, _ := raw.(map[string]any)
+		index := activityIndex(toolCall["index"])
+		function, _ := toolCall["function"].(map[string]any)
+		call := mcpgateway.ModelActivityToolCall{Type: "function_call", ID: activityString(toolCall["id"]), CallID: activityString(toolCall["id"]), Name: activityString(function["name"]), InputText: activityString(function["arguments"])}
+		key := call.CallID
+		if key == "" {
+			key = fmt.Sprintf("chat:%d", index)
+		}
+		a.upsertToolCall(key, call, true)
+	}
+	if function, ok := delta["function_call"].(map[string]any); ok {
+		a.upsertToolCall("chat:function_call", mcpgateway.ModelActivityToolCall{Type: "function_call", Name: activityString(function["name"]), InputText: activityString(function["arguments"])}, true)
+	}
+}
+
 func (a *modelActivityCapture) readResponseOutput(value map[string]any) {
 	output, _ := value["output"].([]any)
 	for i, item := range output {
 		message, _ := item.(map[string]any)
+		if kind, _ := message["type"].(string); modelActivityToolType(kind) {
+			a.captureToolItem(message, i)
+			continue
+		}
 		if message["role"] != "assistant" || message["type"] != "message" {
 			continue
 		}
@@ -358,6 +504,16 @@ func (a *modelActivityCapture) readResponseOutput(value map[string]any) {
 				}
 			}
 		}
+	}
+}
+
+func (a *modelActivityCapture) readChatMessage(message map[string]any) {
+	if content := readableActivityText(message["content"], "text"); content != "" {
+		a.setBlock(modelActivityBlockKey{}, content, false)
+	}
+	a.captureChatToolCalls(message)
+	if function, ok := message["function_call"].(map[string]any); ok {
+		a.upsertToolCall("chat:function_call", mcpgateway.ModelActivityToolCall{Type: "function_call", Name: activityString(function["name"]), InputText: activityString(function["arguments"])}, false)
 	}
 }
 
@@ -418,7 +574,7 @@ func (a *modelActivityCapture) Finalize(content *mcpgateway.ModelActivityContent
 			if len(choices) > 0 {
 				choice, _ := choices[0].(map[string]any)
 				message, _ := choice["message"].(map[string]any)
-				a.setBlock(modelActivityBlockKey{}, readableActivityText(message["content"], "text"), false)
+				a.readChatMessage(message)
 			}
 		}
 		a.ended = err == nil && json.Valid(responseJSON)
@@ -439,12 +595,55 @@ func (a *modelActivityCapture) Finalize(content *mcpgateway.ModelActivityContent
 	}
 	content.OutputText, content.OutputTruncated = modelActivityText(text.String())
 	content.OutputTruncated = content.OutputTruncated || a.truncated
+	content.ToolCalls = append(content.ToolCalls[:0], a.toolCalls...)
 	content.OutputStatus = "unavailable"
-	if content.OutputText != "" {
+	if content.OutputText != "" || len(content.ToolCalls) > 0 {
 		content.OutputStatus = "partial"
 		if transportOK && a.ended && !a.failed {
 			content.OutputStatus = "available"
 		}
+	}
+}
+
+func enrichModelActivityContentFromResponseBody(content *mcpgateway.ModelActivityContent, responseBody mcpgateway.JSONMap) {
+	if content == nil || len(content.ToolCalls) > 0 || len(responseBody) == 0 {
+		return
+	}
+	capture := modelActivityCapture{stream: true, responses: true}
+	if events, ok := responseBody["events"].([]any); ok {
+		for _, event := range events {
+			consumeStoredModelActivityEvent(&capture, event)
+		}
+	}
+	if prefix, ok := responseBody["prefix"].(string); ok {
+		decoder := json.NewDecoder(strings.NewReader(prefix))
+		if token, err := decoder.Token(); err == nil && token == json.Delim('[') {
+			for decoder.More() {
+				var event json.RawMessage
+				if decoder.Decode(&event) != nil {
+					break
+				}
+				capture.consumeEvent(event)
+			}
+		}
+	}
+	if len(capture.toolCalls) > 0 {
+		content.ToolCalls = append(content.ToolCalls[:0], capture.toolCalls...)
+	}
+}
+
+func consumeStoredModelActivityEvent(capture *modelActivityCapture, event any) {
+	if text, ok := event.(string); ok {
+		if text == "[DONE]" {
+			capture.ended = true
+			return
+		}
+		capture.consumeEvent([]byte(text))
+		return
+	}
+	raw, err := json.Marshal(event)
+	if err == nil {
+		capture.consumeEvent(raw)
 	}
 }
 

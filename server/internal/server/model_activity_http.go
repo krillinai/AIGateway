@@ -110,7 +110,7 @@ func handleModelActivity(opts Options) gin.HandlerFunc {
 				return
 			}
 			data := modelActivityRequest(c, opts, record)
-			data["activity_content"] = record.ActivityContent
+			data["activity_content"] = modelActivityContentForDisplay(record)
 			data["meta"] = modelActivityMeta()
 			c.JSON(200, gin.H{"data": data})
 			return
@@ -146,12 +146,13 @@ func handleModelActivity(opts Options) gin.HandlerFunc {
 		items := make([]gin.H, 0, len(page.Items))
 		for _, record := range page.Items {
 			data := modelActivityRequest(c, opts, record)
-			content := record.ActivityContent
+			content := modelActivityContentForDisplay(record)
 			input, _ := limitActivityText(content.InputText, 160)
 			output, _ := limitActivityText(content.OutputText, 160)
 			data["input_preview"], data["output_preview"] = input, output
 			data["input_status"], data["output_status"] = content.InputStatus, content.OutputStatus
 			data["input_truncated"], data["output_truncated"] = content.InputTruncated, content.OutputTruncated
+			data["tool_call_count"] = len(content.ToolCalls)
 			items = append(items, data)
 		}
 		var next *time.Time
@@ -161,6 +162,15 @@ func handleModelActivity(opts Options) gin.HandlerFunc {
 		meta["limit"], meta["next_created_at"], meta["next_id"] = filter.Limit, next, page.NextID
 		c.JSON(200, gin.H{"data": gin.H{"items": items, "meta": meta}})
 	}
+}
+
+func modelActivityContentForDisplay(record mcpgateway.ModelProxyAuditRecord) *mcpgateway.ModelActivityContent {
+	if record.ActivityContent == nil {
+		return nil
+	}
+	content := *record.ActivityContent
+	enrichModelActivityContentFromResponseBody(&content, record.ResponseBody)
+	return &content
 }
 
 func modelActivityNames(c *gin.Context, opts Options, userID, clientType, agentID, snapshot string) (string, string) {

@@ -105,7 +105,7 @@ func TestModelActivityInputAndCapture(t *testing.T) {
 		{"重复全文", "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"你好\"}\n\ndata: {\"type\":\"response.output_text.done\",\"text\":\"你好\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"你好\"}]}]}}\n\n", "你好", "available", true, true, true},
 		{"协议内错误", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"部分\"}\n\ndata: {\"type\":\"response.failed\"}\n\ndata: [DONE]\n\n", "部分", "partial", true, true, true},
 		{"空全文校准", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"旧内容\"}\n\ndata: {\"type\":\"response.output_text.done\",\"text\":\"\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{}}\n\n", "", "unavailable", true, true, true},
-		{"工具响应", `{"output":[{"type":"function_call","arguments":"机密"}]}`, "", "unavailable", false, true, true},
+		{"工具响应", `{"output":[{"type":"function_call","name":"exec","call_id":"call_1","arguments":"机密"}]}`, "", "available", false, true, true},
 		{"跨分片脱敏", "data: {\"choices\":[{\"delta\":{\"content\":\"Bearer abcdefghijklmnop\"}}]}\n\ndata: [DONE]\n\n", "Bearer [REDACTED]", "available", true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,6 +126,12 @@ func TestModelActivityInputAndCapture(t *testing.T) {
 				}
 			}
 		})
+	}
+	toolCapture := modelActivityCapture{responses: true}
+	toolContent := mcpgateway.ModelActivityContent{}
+	toolCapture.Finalize(&toolContent, true, []byte(`{"status":"completed","output":[{"type":"function_call","name":"exec","call_id":"call_1","arguments":"Bearer abcdefghijklmnop"}]}`))
+	if len(toolContent.ToolCalls) != 1 || toolContent.ToolCalls[0].Name != "exec" || toolContent.ToolCalls[0].InputText != "Bearer [REDACTED]" || toolContent.OutputStatus != "available" {
+		t.Fatalf("工具调用解析错误: %+v", toolContent)
 	}
 	text, truncated := modelActivityText(strings.Repeat("中", 8001))
 	if utf8.RuneCountInString(text) != 8000 || !truncated || !utf8.ValidString(text) {
@@ -170,6 +176,29 @@ func TestModelActivityLargeJSON(t *testing.T) {
 				t.Fatalf("大响应摘录错误: status=%q truncated=%v text_chars=%d", content.OutputStatus, content.OutputTruncated, utf8.RuneCountInString(content.OutputText))
 			}
 		})
+	}
+}
+
+func TestEnrichModelActivityContentFromResponseBody(t *testing.T) {
+	content := &mcpgateway.ModelActivityContent{OutputStatus: "unavailable"}
+	enrichModelActivityContentFromResponseBody(content, mcpgateway.JSONMap{
+		"content_type": "text/event-stream",
+		"events": []any{
+			map[string]any{"type": "response.output_item.added", "output_index": float64(0), "item": map[string]any{"type": "custom_tool_call", "id": "tool_1", "call_id": "call_1", "name": "exec"}},
+			map[string]any{"type": "response.custom_tool_call_input.delta", "item_id": "tool_1", "delta": "{\"cmd\":\"pwd\"}"},
+		},
+	})
+	if len(content.ToolCalls) != 1 || content.ToolCalls[0].Name != "exec" || content.ToolCalls[0].InputText != `{"cmd":"pwd"}` {
+		t.Fatalf("历史响应工具调用解析错误: %+v", content)
+	}
+	prefix, err := json.Marshal([]any{map[string]any{"type": "response.output_item.done", "output_index": float64(0), "item": map[string]any{"type": "function_call", "id": "tool_2", "call_id": "call_2", "name": "exec", "arguments": "{\"cmd\":\"ls\"}"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefixContent := &mcpgateway.ModelActivityContent{}
+	enrichModelActivityContentFromResponseBody(prefixContent, mcpgateway.JSONMap{"prefix": string(prefix)})
+	if len(prefixContent.ToolCalls) != 1 || prefixContent.ToolCalls[0].CallID != "call_2" || prefixContent.ToolCalls[0].InputText != `{"cmd":"ls"}` {
+		t.Fatalf("截断响应前缀工具调用解析错误: %+v", prefixContent)
 	}
 }
 

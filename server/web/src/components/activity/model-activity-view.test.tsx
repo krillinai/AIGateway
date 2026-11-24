@@ -17,7 +17,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(getModelActivityOverview).mockResolvedValue(overview);
   vi.mocked(getModelRequests).mockResolvedValue({ items: [request], meta: { ...meta, limit: 20, next_created_at: request.created_at, next_id: request.audit_id } });
-  vi.mocked(getModelRequestDetail).mockResolvedValue({ ...request, activity_content: { schema_version: 1, input_text: "<script>输入</script>", output_text: "已取得的输出", input_status: "available", output_status: "partial", input_truncated: false, output_truncated: true }, meta });
+  vi.mocked(getModelRequestDetail).mockResolvedValue({ ...request, activity_content: { schema_version: 1, input_text: "<script>输入</script>", output_text: "已取得的输出", input_status: "available", output_status: "partial", input_truncated: false, output_truncated: true, tool_calls: [{ type: "custom_tool_call", name: "exec", call_id: "call_1", input_text: "{\"cmd\":\"pwd\"}" }] }, meta });
 });
 it("展示模型口径、缺失用量和兼容入口，分页与刷新按需查询", async () => {
   show();
@@ -58,6 +58,8 @@ it("游标翻页、精确筛选重置游标，详情只使用审计ID且纯文�
   expect(document.querySelector("script")).toBeNull();
   expect(screen.getByText(/部分输出：/)).toBeInTheDocument();
   expect(screen.getByText(/最多保存 8000/)).toBeInTheDocument();
+  expect(screen.getByText("工具调用（1）")).toBeInTheDocument();
+  expect(screen.getByText("exec")).toBeInTheDocument();
 });
 it("按会话归并轮次并支持分层收起", async () => {
   const secondTurn = { ...request, audit_id: "audit-2", turn_id: "turn-2", input_preview: "第二轮请求", output_preview: "第二轮响应", created_at: new Date(Date.now() - 12 * 60_000).toISOString() };
@@ -80,4 +82,9 @@ it("未关联调用不能按会话或轮次混合筛选", async () => {
   await screen.findByText("输入预览");
   expect(screen.getByLabelText("会话 ID")).toBeDisabled();
   expect(screen.getByRole("button", { name: "精确筛选" })).toBeDisabled();
+});
+it("列表摘要标识没有文本输出的工具调用", async () => {
+  vi.mocked(getModelRequests).mockResolvedValueOnce({ items: [{ ...request, output_preview: "", tool_call_count: 1 }], meta: { ...meta, limit: 20, next_created_at: null, next_id: "" } });
+  show("/admin/activity/detail?source=model_proxy&user_id=user&agent_id=agent", true);
+  expect(await screen.findByText("本次包含 1 次工具调用")).toBeInTheDocument();
 });

@@ -8,6 +8,16 @@ export type ModelActivityContent = {
   output_status: "pending" | "available" | "partial" | "unavailable";
   input_truncated: boolean;
   output_truncated: boolean;
+  tool_calls?: ModelActivityToolCall[];
+};
+export type ModelActivityToolCall = {
+  type: string;
+  id?: string;
+  call_id?: string;
+  name?: string;
+  input_text?: string;
+  input_truncated?: boolean;
+  status?: string;
 };
 export type ModelActivityStats = {
   request_count: number; session_count: number; turn_count: number; total_tokens: number | null;
@@ -27,7 +37,7 @@ export type ModelRequest = {
   audit_id: string; user_id: string; user_name: string; client_type?: string; agent_id: string; agent_name: string;
   session_id: string; session_source?: string; turn_id: string; turn_source?: string; model: string; created_at: string; completed_at: string | null;
   status: string; error_code: string; total_tokens: number | null;
-  usage_status: "complete" | "partial" | "unavailable"; duration_ms: number | null;
+  usage_status: "complete" | "partial" | "unavailable"; duration_ms: number | null; tool_call_count?: number;
 };
 export type ModelRequestPreview = ModelRequest & Omit<ModelActivityContent, "schema_version" | "input_text" | "output_text"> & { input_preview: string; output_preview: string };
 export type ModelRequestDetail = ModelRequest & { activity_content: ModelActivityContent; meta: { source: "model_proxy"; schema_version: 1 } };
