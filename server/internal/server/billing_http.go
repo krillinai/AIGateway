@@ -46,11 +46,7 @@ func mountBillingRoutes(app *gin.RouterGroup, opts Options) {
 		if !requireAgentActivityRead(c, opts) {
 			return
 		}
-		if rejectEnterpriseManagedBilling(c, opts) {
-			return
-		}
-		if opts.BillingProvider == nil {
-			activityError(c, http.StatusServiceUnavailable, "billing_unavailable", "账户额度暂不可用")
+		if rejectBillingNotManaged(c, opts) {
 			return
 		}
 		result, err := opts.BillingProvider.GetBillingOverview(c.Request.Context(), c.Query("range"))
@@ -65,10 +61,10 @@ func mountBillingRoutes(app *gin.RouterGroup, opts Options) {
 		if !requireAgentActivityRead(c, opts) {
 			return
 		}
-		if rejectEnterpriseManagedBilling(c, opts) {
+		if rejectBillingNotManaged(c, opts) {
 			return
 		}
-		if c.Request.URL.RawQuery != "" || c.Request.ContentLength > 0 || opts.BillingProvider == nil {
+		if c.Request.URL.RawQuery != "" || c.Request.ContentLength > 0 {
 			activityError(c, http.StatusServiceUnavailable, "recharge_unavailable", "充值入口暂不可用")
 			return
 		}
@@ -84,7 +80,7 @@ func mountBillingRoutes(app *gin.RouterGroup, opts Options) {
 		if !requireAgentActivityRead(c, opts) {
 			return
 		}
-		if rejectEnterpriseManagedBilling(c, opts) {
+		if rejectBillingNotManaged(c, opts) {
 			return
 		}
 		for key := range c.Request.URL.Query() {
@@ -101,10 +97,6 @@ func mountBillingRoutes(app *gin.RouterGroup, opts Options) {
 		pageSize, ok := rechargePageParam(c.Query("page_size"), 20, 100)
 		if !ok || page-1 > int(^uint(0)>>1)/pageSize {
 			activityError(c, http.StatusBadRequest, "invalid_recharge_records_page", "充值记录分页参数无效")
-			return
-		}
-		if opts.BillingProvider == nil {
-			activityError(c, http.StatusServiceUnavailable, "recharge_records_unavailable", "充值记录暂不可用")
 			return
 		}
 		result, err := opts.BillingProvider.ListRechargeOrders(c.Request.Context(), page, pageSize)
@@ -146,12 +138,20 @@ func newBillingOverviewUsage(usage clawadmin.BillingUsage) billingOverviewUsage 
 	}
 }
 
-func rejectEnterpriseManagedBilling(c *gin.Context, opts Options) bool {
-	if modelAccessMode(opts) != ModelAccessEnterpriseManaged {
-		return false
+func rejectBillingNotManaged(c *gin.Context, opts Options) bool {
+	if modelAccessMode(opts) == ModelAccessEnterpriseManaged {
+		activityError(c, http.StatusConflict, "billing_not_managed", "当前部署使用企业自有模型服务，平台不管理该模型账单")
+		return true
 	}
-	activityError(c, http.StatusConflict, "billing_not_managed", "当前部署使用企业自有模型服务，平台不管理该模型账单")
-	return true
+	if opts.BillingProvider == nil {
+		activityError(c, http.StatusConflict, "billing_not_managed", "当前部署未配置平台账单服务")
+		return true
+	}
+	if provider, ok := opts.BillingProvider.(*clawadmin.Client); ok && !provider.Configured() {
+		activityError(c, http.StatusConflict, "billing_not_managed", "当前部署未配置平台账单服务")
+		return true
+	}
+	return false
 }
 
 func rechargePageParam(raw string, fallback, maximum int) (int, bool) {

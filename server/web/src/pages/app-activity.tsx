@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Bot, Clock3, CreditCard, Database, History, RefreshCw, Users, WalletCards } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, Bot, Clock3, Database, RefreshCw, Users } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Link, useSearchParams } from "react-router-dom";
 
@@ -13,7 +13,6 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   getMyActivityStatistics,
   type ActivityAgent,
@@ -24,7 +23,6 @@ import {
   type ActivityTokenUsageRank,
 } from "@/lib/activity-api";
 import { APIError } from "@/lib/api";
-import { createRechargeSession, getBillingOverview, isBillingNotManaged, openRechargePage, type BillingOverview } from "@/lib/billing-api";
 import { canReadAgentActivity, listMyDataViews } from "@/lib/data-views-api";
 import { mcpStatusLabel } from "@/lib/mcp-admin-ui";
 import { cn } from "@/lib/utils";
@@ -67,13 +65,6 @@ function ActivityStatisticsView() {
     enabled: authorized,
     retry: false,
   });
-  const billingQuery = useQuery({
-    queryKey: ["app-billing-overview", range],
-    queryFn: () => getBillingOverview(range),
-    enabled: authorized,
-    retry: false,
-  });
-
   useEffect(() => {
     if (statisticsQuery.error instanceof APIError && statisticsQuery.error.code === "data_view_forbidden") {
       void queryClient.invalidateQueries({ queryKey: ["app-data-views"] });
@@ -116,9 +107,6 @@ function ActivityStatisticsView() {
 
       {statisticsQuery.isLoading ? <ActivityContentSkeleton /> : null}
       {statisticsQuery.isError ? <ErrorAlert error={statisticsQuery.error}>Agent 动态加载失败，请稍后重试。</ErrorAlert> : null}
-      {billingQuery.isLoading ? <BillingOverviewSkeleton /> : null}
-      {billingQuery.isError && !isBillingNotManaged(billingQuery.error) ? <ErrorAlert error={billingQuery.error}>账户额度暂不可用，请稍后重试。</ErrorAlert> : null}
-      {billingQuery.data ? <BillingSummary data={billingQuery.data} /> : null}
       {statisticsQuery.data ? (
         <ActivityContent
           data={statisticsQuery.data}
@@ -355,43 +343,6 @@ function TokenUsageRanking({ items }: { items: ActivityTokenUsageRank[] }) {
   );
 }
 
-function BillingSummary({ data }: { data: BillingOverview }) {
-  const recharge = useMutation({
-    mutationFn: createRechargeSession,
-    onSuccess: (session) => openRechargePage(session.recharge_url),
-  });
-  return (
-    <section aria-label="账户额度" className="grid gap-px overflow-hidden rounded-md border border-border bg-border">
-      <div className="min-w-0 bg-card p-5">
-        <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
-          <span>账户余额</span><WalletCards className="size-4 text-primary" aria-hidden="true" />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <strong className="font-mono text-3xl font-semibold">{formatCurrency(data.balance_cny)}</strong>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={recharge.isPending} onClick={() => recharge.mutate()} size="sm"><CreditCard data-icon="inline-start" />充值</Button>
-            <TooltipProvider delayDuration={150}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button asChild size="icon" variant="outline">
-                    <Link aria-label="充值记录" to="/app/activity/recharge-records"><History aria-hidden="true" /></Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>充值记录</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        </div>
-        {recharge.isError ? <p className="mt-2 text-xs text-destructive">充值入口暂不可用</p> : null}
-      </div>
-    </section>
-  );
-}
-
-function BillingOverviewSkeleton() {
-  return <section aria-label="账户额度加载中" className="grid gap-px overflow-hidden rounded-md border bg-border"><Skeleton className="h-28 rounded-none" /></section>;
-}
-
 function UsageRow({ label, value, total, muted = false }: { label: string; value: number; total: number; muted?: boolean }) {
   const share = total > 0 ? Math.min(1, value / total) : 0;
   return (
@@ -486,10 +437,6 @@ function Legend({ color, label }: { color: string; label: string }) {
 
 function formatInteger(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value);
 }
 
 function formatTokenCount(value: number) {

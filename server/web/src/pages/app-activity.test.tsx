@@ -4,8 +4,6 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getMyActivityStatistics, getMyAgentUsage, type ActivityStatistics } from "@/lib/activity-api";
-import { APIError } from "@/lib/api";
-import { createRechargeSession, getBillingOverview, openRechargePage, type BillingOverview } from "@/lib/billing-api";
 import { listMyDataViews } from "@/lib/data-views-api";
 import { getMyAgentDetail } from "@/lib/office-api";
 import { fixtureAgentDetail } from "@/test/office-fixtures";
@@ -20,11 +18,6 @@ vi.mock("@/lib/activity-api", async () => {
 vi.mock("@/lib/data-views-api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/data-views-api")>("@/lib/data-views-api");
   return { ...actual, listMyDataViews: vi.fn() };
-});
-
-vi.mock("@/lib/billing-api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/billing-api")>("@/lib/billing-api");
-  return { ...actual, createRechargeSession: vi.fn(), getBillingOverview: vi.fn(), openRechargePage: vi.fn() };
 });
 
 vi.mock("@/lib/office-api", async () => {
@@ -63,17 +56,6 @@ const fixtureStatistics: ActivityStatistics = {
   data_status: { model_usage: "available", activity: "available" },
 };
 
-const fixtureBilling: BillingOverview = {
-  currency: "CNY",
-  exchange_rate: 7.5,
-  balance_cny: 100,
-  start_date: "2026-08-07",
-  end_date: "2026-08-13",
-  granularity: "day",
-  generated_at: "2026-08-13T03:12:37Z",
-  stats: { requests: 20, input_tokens: 18279996, cached_input_tokens: 16894080, output_tokens: 116251, total_tokens: 18396247 },
-};
-
 describe("AppActivityPage", () => {
   afterEach(() => vi.clearAllMocks());
 
@@ -84,8 +66,6 @@ describe("AppActivityPage", () => {
       incomplete_usage_requests: 2,
       data_status: { model_usage: status, activity: "available" },
     });
-    vi.mocked(getBillingOverview).mockResolvedValue(fixtureBilling);
-
     renderPage(<AppActivityPage />, "/app/activity");
 
     expect(await screen.findByText("2 次调用未返回完整用量，Token 统计仅包含已知用量。")).toBeInTheDocument();
@@ -105,8 +85,6 @@ describe("AppActivityPage", () => {
   it("renders authorized organization activity and switches ranges", async () => {
     vi.mocked(listMyDataViews).mockResolvedValue([{ view_id: "agent_activity", actions: ["read"] }]);
     vi.mocked(getMyActivityStatistics).mockImplementation(async (range) => ({ ...fixtureStatistics, range }));
-    vi.mocked(getBillingOverview).mockResolvedValue(fixtureBilling);
-
     renderPage(<AppActivityPage />, "/app/activity");
 
     expect(await screen.findByRole("heading", { name: "Agent 动态" })).toBeInTheDocument();
@@ -117,14 +95,7 @@ describe("AppActivityPage", () => {
     expect(screen.getByRole("table", { name: "Skill 使用证据" })).toHaveTextContent("reports企业321");
     expect(screen.getByRole("table", { name: "员工 Skill 使用" })).toHaveTextContent("张三132");
     expect(screen.getByRole("table", { name: "Token 使用排行" })).toHaveTextContent("张三12860,000");
-    expect(screen.getByRole("region", { name: "账户额度" })).toHaveTextContent("账户余额");
-    expect(screen.getByRole("region", { name: "账户额度" })).toHaveTextContent("¥100.00");
-    expect(screen.getByRole("region", { name: "账户额度" })).not.toHaveTextContent("当前区间实际费用");
-    const rechargeButton = screen.getByRole("button", { name: "充值" });
-    const rechargeRecordsLink = screen.getByRole("link", { name: "充值记录" });
-    expect(rechargeRecordsLink).toHaveAttribute("href", "/app/activity/recharge-records");
-    expect(rechargeRecordsLink).not.toHaveTextContent("充值记录");
-    expect(rechargeButton.compareDocumentPosition(rechargeRecordsLink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "账户额度" })).not.toBeInTheDocument();
     expect(screen.queryByText(/sub2api/i)).not.toBeInTheDocument();
     expect(screen.getByText("Hermes C03")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看 Hermes C03 详情" })).toHaveAttribute(
@@ -134,48 +105,16 @@ describe("AppActivityPage", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "近 30 天" }));
     await waitFor(() => expect(getMyActivityStatistics).toHaveBeenLastCalledWith("30d"));
-    await waitFor(() => expect(getBillingOverview).toHaveBeenLastCalledWith("30d"));
-  });
-
-  it("renders billing unavailable without displaying a zero balance", async () => {
-    vi.mocked(listMyDataViews).mockResolvedValue([{ view_id: "agent_activity", actions: ["read"] }]);
-    vi.mocked(getMyActivityStatistics).mockResolvedValue(fixtureStatistics);
-    vi.mocked(getBillingOverview).mockRejectedValue(new Error("unavailable"));
-
-    renderPage(<AppActivityPage />, "/app/activity");
-
-    expect(await screen.findByText("账户额度暂不可用，请稍后重试。")).toBeInTheDocument();
-    expect(screen.queryByText("¥0.00")).not.toBeInTheDocument();
   });
 
   it("keeps rendering when older statistics omit employee Skill usage", async () => {
     const { employee_skill_usage: _employeeSkillUsage, ...legacyOrganization } = fixtureStatistics.organization;
     vi.mocked(listMyDataViews).mockResolvedValue([{ view_id: "agent_activity", actions: ["read"] }]);
     vi.mocked(getMyActivityStatistics).mockResolvedValue({ ...fixtureStatistics, organization: legacyOrganization });
-    vi.mocked(getBillingOverview).mockRejectedValue(new APIError("not managed", 409, "billing_not_managed"));
-
     renderPage(<AppActivityPage />, "/app/activity");
 
     expect(await screen.findByText("Hermes C03")).toBeInTheDocument();
     expect(screen.getByText("当前范围内暂无员工 Skill 使用记录")).toBeInTheDocument();
-  });
-
-  it("hides central balance and recharge for enterprise-managed billing", async () => {
-    vi.mocked(listMyDataViews).mockResolvedValue([{ view_id: "agent_activity", actions: ["read"] }]);
-    vi.mocked(getMyActivityStatistics).mockResolvedValue(fixtureStatistics);
-    vi.mocked(getBillingOverview).mockRejectedValue(new APIError(
-      "当前部署使用企业自有模型服务",
-      409,
-      "billing_not_managed",
-    ));
-
-    renderPage(<AppActivityPage />, "/app/activity");
-
-    expect(await screen.findByText("Hermes C03")).toBeInTheDocument();
-    expect(screen.queryByText("账户额度暂不可用，请稍后重试。")).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "账户额度" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "充值" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "充值记录" })).not.toBeInTheDocument();
   });
 
   it("renders an unconfigured token source without hiding local activity", async () => {
@@ -188,8 +127,6 @@ describe("AppActivityPage", () => {
       token_usage_ranking: [],
       data_status: { model_usage: "not_configured", activity: "available" },
     });
-    vi.mocked(getBillingOverview).mockRejectedValue(new APIError("not managed", 409, "billing_not_managed"));
-
     renderPage(<AppActivityPage />, "/app/activity");
 
     expect(await screen.findByText("暂未配置模型用量数据源")).toBeInTheDocument();
@@ -214,8 +151,6 @@ describe("AppActivityPage", () => {
     };
     vi.mocked(listMyDataViews).mockResolvedValue([{ view_id: "agent_activity", actions: ["read"] }]);
     vi.mocked(getMyActivityStatistics).mockResolvedValueOnce(unavailable).mockResolvedValueOnce(fixtureStatistics);
-    vi.mocked(getBillingOverview).mockRejectedValue(new APIError("not managed", 409, "billing_not_managed"));
-
     renderPage(<AppActivityPage />, "/app/activity");
 
     expect(await screen.findByText("Token 数据暂不可用", { selector: "[data-slot='empty-title']" })).toBeInTheDocument();
@@ -225,7 +160,6 @@ describe("AppActivityPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(getMyActivityStatistics).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByText("gpt-5.6-sol")).toBeInTheDocument());
-    expect(getBillingOverview).toHaveBeenCalledTimes(1);
   });
 
   it("renders real zero token usage as available", async () => {
@@ -237,8 +171,6 @@ describe("AppActivityPage", () => {
       model_distribution: [],
       token_usage_ranking: [],
     });
-    vi.mocked(getBillingOverview).mockResolvedValue(fixtureBilling);
-
     renderPage(<AppActivityPage />, "/app/activity");
 
     expect(await screen.findByText("Token 趋势")).toBeInTheDocument();
@@ -250,32 +182,6 @@ describe("AppActivityPage", () => {
     expect(screen.queryByText("Token 数据暂不可用")).not.toBeInTheDocument();
   });
 
-  it("opens the recharge page returned by the billing service", async () => {
-    vi.mocked(listMyDataViews).mockResolvedValue([{ view_id: "agent_activity", actions: ["read"] }]);
-    vi.mocked(getMyActivityStatistics).mockResolvedValue(fixtureStatistics);
-    vi.mocked(getBillingOverview).mockResolvedValue(fixtureBilling);
-    vi.mocked(createRechargeSession).mockResolvedValue({ recharge_url: "https://billing.example/recharge/session-token", expires_at: "2026-08-13T03:22:37Z" });
-
-    renderPage(<AppActivityPage />, "/app/activity");
-
-    fireEvent.click(await screen.findByRole("button", { name: "充值" }));
-    await waitFor(() => expect(createRechargeSession).toHaveBeenCalledOnce());
-    await waitFor(() => expect(openRechargePage).toHaveBeenCalledWith("https://billing.example/recharge/session-token"));
-  });
-
-  it("shows an error and does not redirect when recharge session creation fails", async () => {
-    vi.mocked(listMyDataViews).mockResolvedValue([{ view_id: "agent_activity", actions: ["read"] }]);
-    vi.mocked(getMyActivityStatistics).mockResolvedValue(fixtureStatistics);
-    vi.mocked(getBillingOverview).mockResolvedValue(fixtureBilling);
-    vi.mocked(createRechargeSession).mockRejectedValue(new Error("unavailable"));
-
-    renderPage(<AppActivityPage />, "/app/activity");
-
-    fireEvent.click(await screen.findByRole("button", { name: "充值" }));
-    expect(await screen.findByText("充值入口暂不可用")).toBeInTheDocument();
-    expect(openRechargePage).not.toHaveBeenCalled();
-  });
-
   it("does not request statistics without the data view grant", async () => {
     vi.mocked(listMyDataViews).mockResolvedValue([]);
 
@@ -283,7 +189,6 @@ describe("AppActivityPage", () => {
 
     expect(await screen.findByText("当前账户未开通 Agent 动态")).toBeInTheDocument();
     expect(getMyActivityStatistics).not.toHaveBeenCalled();
-    expect(getBillingOverview).not.toHaveBeenCalled();
   });
 
   it("renders account activity detail with an app back link", async () => {

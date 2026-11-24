@@ -156,6 +156,35 @@ func TestEnterpriseManagedBillingRejectsAllRoutesWithoutProviderCalls(t *testing
 	}
 }
 
+func TestUnconfiguredBillingReturnsNotManaged(t *testing.T) {
+	ctx := context.Background()
+	accountService := accounts.NewService(accounts.Config{Store: accounts.NewMemoryStore(), JWTSigningKey: []byte(activityTestJWTKey)})
+	registered, err := accountService.Register(ctx, accounts.RegisterRequest{Email: "unconfigured-billing@example.com", Name: "Unconfigured Billing", Password: "passw0rd!"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := accountService.IssueTokens(ctx, registered.Account, []accounts.TokenRequest{{Audience: accounts.AudienceFrontend, ClientID: accounts.ClientWeb}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataService := dataaccess.NewService(dataaccess.NewMemoryStore())
+	if _, err := dataService.Create(ctx, dataaccess.SetInput{UserID: registered.Account.UserID, ResourceType: dataaccess.ResourceDataView,
+		ResourceID: dataaccess.ViewAgentActivity, Actions: []string{dataaccess.ActionRead}, CreatedBy: "admin"}); err != nil {
+		t.Fatal(err)
+	}
+	router := NewRouter(Options{
+		AccountService: accountService, DataAccessService: dataService,
+		BillingProvider: clawadmin.NewClient("", "", time.Second),
+	})
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/app/billing/overview?range=7d", nil)
+	req.AddCookie(&http.Cookie{Name: defaultSessionCookieName, Value: tokens.Token(accounts.AudienceFrontend).Token})
+	router.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), `"code":"billing_not_managed"`) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestBillingOverviewDoesNotDowngradeUnavailableDataToZero(t *testing.T) {
 	ctx := context.Background()
 	accountService := accounts.NewService(accounts.Config{Store: accounts.NewMemoryStore(), JWTSigningKey: []byte(activityTestJWTKey)})
