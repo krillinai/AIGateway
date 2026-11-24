@@ -427,11 +427,15 @@ describe("AdminOverviewPage", () => {
     renderAdminOverviewPage();
 
     const topology = await screen.findByRole("region", { name: "Agent 接入治理链路" });
-    expect(await within(topology).findByText("WorkBuddy")).toBeInTheDocument();
+    expect(await within(topology).findByText("林晓 · WorkBuddy")).toBeInTheDocument();
     expect(within(topology).getByText("外部客户端 · 8 次模型调用")).toBeInTheDocument();
-    expect(within(topology).getByRole("link", { name: "查看 WorkBuddy 详情" })).toHaveAttribute(
+    expect(within(topology).getByRole("link", { name: "查看 林晓 · WorkBuddy 详情" })).toHaveAttribute(
       "href",
-      "/admin/activity?source=model_proxy&range=today&client_type=workbuddy"
+      "/admin/activity?source=model_proxy&range=today&user_id=user_1&client_type=workbuddy"
+    );
+    expect(within(topology).getByRole("link", { name: "查看 林晓 · WorkBuddy 详情" }).querySelector("img")).toHaveAttribute(
+      "src",
+      "/assets/agent-icons/workbuddy.svg"
     );
   });
 

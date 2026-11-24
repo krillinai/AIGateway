@@ -1,6 +1,6 @@
-import { AlertTriangle, Edit3, ExternalLink, Eye, Plus, Power, PowerOff, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, Edit3, ExternalLink, Eye, KeyRound, Plus, Power, PowerOff, RefreshCw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -38,8 +38,11 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { listAccounts, type Account } from "@/lib/accounts-api";
 import { cleanInputIdentifier, trimInput } from "@/lib/text";
 import {
+  createMCPGrant,
   createUpstreamServer,
   deleteMCPUpstreamServer,
   listMCPAudits,
@@ -52,13 +55,16 @@ import {
   type CreateUpstreamServerInput,
   type MCPAudit,
   type MCPCapability,
+  type MCPGrant,
   type MCPUpstreamServer
 } from "@/lib/mcp-admin-api";
+import { APIError } from "@/lib/api";
 import {
   decisionVariant,
   filterUpstreamServers,
   formatDateTime,
   formatDuration,
+  isDataAuthorizedTool,
   mcpStatusLabel,
   mcpStatusVariant,
   parseMCPServerConfigImport,
@@ -83,6 +89,12 @@ type ServerFormState = {
 type DeleteConfirmState = {
   server: MCPUpstreamServer;
   step: "requires-disable" | "confirm-delete";
+};
+
+type AccountGrantState = {
+  serverId: string;
+  userId: string;
+  capabilityIds: string[];
 };
 
 const emptyCreateServerForm: CreateServerForm = {
@@ -110,8 +122,10 @@ export function MCPUpstreamServersPage() {
   const canDelete = useAdminPermission(permissions.mcpUpstreamDelete);
   const canSync = useAdminPermission(permissions.mcpUpstreamSync);
   const canUpdateStatus = useAdminPermission(permissions.mcpUpstreamUpdateStatus);
-  const canReadCapabilities = useAdminPermission(permissions.mcpCapabilityRead);
   const canReadGrants = useAdminPermission(permissions.mcpGrantRead);
+  const canCreateGrants = useAdminPermission(permissions.mcpGrantCreate);
+  const canReadCapabilities = useAdminPermission(permissions.mcpCapabilityRead) || canCreateGrants;
+  const canReadAccounts = useAdminPermission(permissions.accountRead);
   const canReadAudits = useAdminPermission(permissions.mcpAuditRead);
   const location = useLocation();
   const navigate = useNavigate();
@@ -123,6 +137,9 @@ export function MCPUpstreamServersPage() {
   const [selectedServerID, setSelectedServerID] = useState<string | null>(() => readQueryParam(location.search, "server_id"));
   const [serverFormState, setServerFormState] = useState<ServerFormState | null>(null);
   const [deleteConfirmState, setDeleteConfirmState] = useState<DeleteConfirmState | null>(null);
+  const [accountGrantState, setAccountGrantState] = useState<AccountGrantState | null>(null);
+  const [accountGrantError, setAccountGrantError] = useState<string | null>(null);
+  const [accountGrantNotice, setAccountGrantNotice] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState<CreateServerForm>(emptyCreateServerForm);
   const [stdioConfigText, setStdioConfigText] = useState("");
   const [stdioArgsText, setStdioArgsText] = useState("[]");
@@ -147,6 +164,11 @@ export function MCPUpstreamServersPage() {
     queryKey: auditsQueryKey,
     queryFn: () => listMCPAudits({ limit: 200 }),
     enabled: canReadAudits
+  });
+  const accountsQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: listAccounts,
+    enabled: canCreateGrants && canReadAccounts && Boolean(accountGrantState)
   });
 
   const createMutation = useMutation({
@@ -193,11 +215,34 @@ export function MCPUpstreamServersPage() {
       queryClient.invalidateQueries({ queryKey: upstreamServersQueryKey });
     }
   });
+  const accountGrantMutation = useMutation({
+    mutationFn: async ({ serverId, userId, capabilityIds }: AccountGrantState) => {
+      const results = await Promise.allSettled(capabilityIds.map((capabilityId) => createMCPGrant({
+        userId,
+        capabilityId,
+        grantType: "tool"
+      })));
+      const failure = results.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected" && !isGrantAlreadyExistsError(result.reason)
+      );
+      if (failure) throw failure.reason;
+      return { serverId, createdCount: results.filter((result) => result.status === "fulfilled").length };
+    },
+    onSuccess: ({ serverId, createdCount }) => {
+      const server = servers.find((item) => item.id === serverId);
+      setAccountGrantState(null);
+      setAccountGrantError(null);
+      setAccountGrantNotice(`已为账户完成“${server?.name || serverId}”授权，新增 ${createdCount} 项工具权限。`);
+      queryClient.invalidateQueries({ queryKey: grantsQueryKey });
+    },
+    onError: (error) => setAccountGrantError(error instanceof Error ? error.message : String(error))
+  });
 
   const servers = serversQuery.data ?? [];
   const capabilities = capabilitiesQuery.data ?? [];
   const grants = grantsQuery.data ?? [];
   const audits = auditsQuery.data ?? [];
+  const accounts = (accountsQuery.data ?? []).filter((account) => account.status === "active");
   const filterValues = useMemo(() => ({
     query,
     status: status === "all" ? undefined : status,
@@ -217,6 +262,27 @@ export function MCPUpstreamServersPage() {
   const lastSyncAt = latestTimestamp(servers.map((server) => server.lastSyncedAt));
   const isLoading = serversQuery.isLoading || (canReadCapabilities && capabilitiesQuery.isLoading) || (canReadAudits && auditsQuery.isLoading);
   const hasLoadError = serversQuery.isError || capabilitiesQuery.isError || grantsQuery.isError || auditsQuery.isError;
+  const accountGrantServer = accountGrantState
+    ? servers.find((server) => server.id === accountGrantState.serverId) ?? null
+    : null;
+  const accountGrantCapabilities = useMemo(
+    () => capabilities.filter((capability) =>
+      capability.upstreamServerId === accountGrantState?.serverId &&
+      capability.status === "active" &&
+      !isDataAuthorizedTool(capability, accountGrantServer ?? undefined)
+    ),
+    [accountGrantServer, accountGrantState?.serverId, capabilities]
+  );
+
+  useEffect(() => {
+    if (!accountGrantState || accountGrantState.userId || accounts.length === 0) return;
+    const userId = accounts[0].userId;
+    setAccountGrantState((state) => state ? {
+      ...state,
+      userId,
+      capabilityIds: grantableCapabilityIDs(accountGrantCapabilities, grants, userId)
+    } : state);
+  }, [accountGrantCapabilities, accountGrantState, accounts, grants]);
 
   function updateFilter(next: { q?: string; status?: string; domain?: string; transport?: string }) {
     const updates: Record<string, string | null> = {};
@@ -378,6 +444,51 @@ export function MCPUpstreamServersPage() {
     }
   }
 
+  function openAccountGrant(server: MCPUpstreamServer) {
+    accountGrantMutation.reset();
+    setAccountGrantNotice(null);
+    setAccountGrantError(null);
+    const userId = accounts[0]?.userId ?? "";
+    setAccountGrantState({
+      serverId: server.id,
+      userId,
+      capabilityIds: grantableCapabilityIDs(
+        capabilities.filter((capability) =>
+          capability.upstreamServerId === server.id &&
+          capability.status === "active" &&
+          !isDataAuthorizedTool(capability, server)
+        ),
+        grants,
+        userId
+      )
+    });
+  }
+
+  function closeAccountGrant() {
+    if (accountGrantMutation.isPending) return;
+    setAccountGrantState(null);
+    setAccountGrantError(null);
+    accountGrantMutation.reset();
+  }
+
+  function selectAccountForGrant(userId: string) {
+    setAccountGrantState((state) => state ? {
+      ...state,
+      userId,
+      capabilityIds: grantableCapabilityIDs(accountGrantCapabilities, grants, userId)
+    } : state);
+  }
+
+  function submitAccountGrant(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!accountGrantState || !trimInput(accountGrantState.userId) || accountGrantState.capabilityIds.length === 0) return;
+    setAccountGrantError(null);
+    accountGrantMutation.mutate({
+      ...accountGrantState,
+      userId: trimInput(accountGrantState.userId)
+    });
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -398,6 +509,7 @@ export function MCPUpstreamServersPage() {
           MCP 上游服务加载失败：无法加载上游服务、工具、授权或代理审计数据。
         </ErrorAlert>
       ) : null}
+      {accountGrantNotice ? <Alert variant="success"><AlertDescription>{accountGrantNotice}</AlertDescription></Alert> : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
@@ -559,6 +671,15 @@ export function MCPUpstreamServersPage() {
                             <Eye aria-hidden="true" />
                             查看详情
                           </Button>
+                          {canCreateGrants ? <Button
+                            aria-label={`给 ${server.id} 的账户授权`}
+                            onClick={() => openAccountGrant(server)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <KeyRound aria-hidden="true" />
+                            给账户授权
+                          </Button> : null}
                           {canUpdate && server.transport !== "builtin" ? <Button
                             aria-label={`编辑 ${server.id}`}
                             onClick={() => openEditModal(server)}
@@ -602,7 +723,11 @@ export function MCPUpstreamServersPage() {
                     保存上游服务只登记接入点，不会自动同步或向智能体暴露工具。
                   </p>
                 </div>
-                {canUpdate || canDelete || canSync || canUpdateStatus ? <div className="flex flex-wrap items-center gap-2">
+                {canUpdate || canDelete || canSync || canUpdateStatus || canCreateGrants ? <div className="flex flex-wrap items-center gap-2">
+                  {canCreateGrants ? <Button onClick={() => openAccountGrant(selectedServer)} size="sm" variant="outline">
+                    <KeyRound className="mr-2 h-4 w-4" aria-hidden="true" />
+                    给账户授权
+                  </Button> : null}
                   {canUpdate && selectedServer.transport !== "builtin" ? <Button onClick={() => openEditModal(selectedServer)} size="sm" variant="secondary">
                     <Edit3 className="mr-2 h-4 w-4" aria-hidden="true" />
                     编辑
@@ -761,6 +886,24 @@ export function MCPUpstreamServersPage() {
           </>
         ) : null}
       </DetailDrawer>
+
+      <AccountGrantModal
+        accounts={accounts}
+        accountQueryError={accountsQuery.isError ? accountsQuery.error.message : null}
+        canReadAccounts={canReadAccounts}
+        capabilities={accountGrantCapabilities}
+        error={accountGrantError}
+        isLoadingAccounts={accountsQuery.isLoading}
+        isPending={accountGrantMutation.isPending}
+        onChangeCapabilities={(capabilityIds) => setAccountGrantState((state) => state ? { ...state, capabilityIds } : state)}
+        onChangeUser={canReadAccounts ? selectAccountForGrant : (userId) => setAccountGrantState((state) => state ? { ...state, userId } : state)}
+        onClose={closeAccountGrant}
+        onSubmit={submitAccountGrant}
+        open={Boolean(accountGrantState)}
+        server={accountGrantServer}
+        selectedCapabilityIds={accountGrantState?.capabilityIds ?? []}
+        userId={accountGrantState?.userId ?? ""}
+      />
 
       <ModalShell
         contextLabel="MCP 网关"
@@ -1002,6 +1145,126 @@ export function MCPUpstreamServersPage() {
   );
 }
 
+function AccountGrantModal({
+  accounts,
+  accountQueryError,
+  canReadAccounts,
+  capabilities,
+  error,
+  isLoadingAccounts,
+  isPending,
+  onChangeCapabilities,
+  onChangeUser,
+  onClose,
+  onSubmit,
+  open,
+  server,
+  selectedCapabilityIds,
+  userId
+}: {
+  accounts: Account[];
+  accountQueryError: string | null;
+  canReadAccounts: boolean;
+  capabilities: MCPCapability[];
+  error: string | null;
+  isLoadingAccounts: boolean;
+  isPending: boolean;
+  onChangeCapabilities: (capabilityIds: string[]) => void;
+  onChangeUser: (userId: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  open: boolean;
+  server: MCPUpstreamServer | null;
+  selectedCapabilityIds: string[];
+  userId: string;
+}) {
+  if (!open) return null;
+  const selectedCapabilityIDs = new Set(selectedCapabilityIds);
+
+  function toggleCapability(capabilityId: string, checked: boolean) {
+    const next = new Set(selectedCapabilityIDs);
+    if (checked) next.add(capabilityId);
+    else next.delete(capabilityId);
+    onChangeCapabilities(Array.from(next));
+  }
+
+  return (
+    <ModalShell
+      contextLabel="MCP 网关"
+      onClose={onClose}
+      open
+      subtitle={server ? `${server.name || server.id} · 默认选中该账户尚未拥有的可用工具` : "选择账户和工具权限"}
+      title="给账户授权"
+    >
+      <form className="grid gap-4" onSubmit={onSubmit}>
+        {canReadAccounts ? (
+          <FormField label="账户" required>
+            <NativeSelect
+              aria-label="授权账户"
+              disabled={isLoadingAccounts || isPending || accounts.length === 0}
+              required
+              value={userId}
+              onChange={(event) => onChangeUser(event.target.value)}
+            >
+              <option value="">{isLoadingAccounts ? "账户加载中..." : "选择启用账户"}</option>
+              {accounts.map((account) => (
+                <option key={account.userId} value={account.userId}>
+                  {accountLabel(account)}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormField>
+        ) : (
+          <FormField label="user_id" required>
+            <Input
+              aria-label="user_id"
+              disabled={isPending}
+              required
+              value={userId}
+              onChange={(event) => onChangeUser(event.target.value)}
+            />
+          </FormField>
+        )}
+        {accountQueryError ? <ErrorAlert>{accountQueryError}</ErrorAlert> : null}
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label>工具权限</Label>
+            <span className="text-xs text-muted-foreground">已选 {selectedCapabilityIDs.size} / {capabilities.length}</span>
+          </div>
+          {capabilities.length > 0 ? (
+            <div className="grid max-h-64 gap-2 overflow-y-auto rounded-md border border-border p-3">
+              {capabilities.map((capability) => (
+                <label className="flex cursor-pointer items-start gap-2 text-sm" key={capability.id}>
+                  <Checkbox
+                    checked={selectedCapabilityIDs.has(capability.id)}
+                    disabled={isPending}
+                    onCheckedChange={(checked) => toggleCapability(capability.id, checked === true)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{capability.exposedName}</span>
+                    <span className="block truncate font-mono text-xs text-muted-foreground">{capability.id}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          ) : (
+            <Alert variant="muted">
+              <AlertDescription>该上游服务暂无可授权工具，请先同步并审核能力。</AlertDescription>
+            </Alert>
+          )}
+        </div>
+        {error ? <ErrorAlert>{error}</ErrorAlert> : null}
+        <div className="flex justify-end gap-2">
+          <Button disabled={isPending} onClick={onClose} type="button" variant="secondary">取消</Button>
+          <Button disabled={isPending || !userId.trim() || selectedCapabilityIDs.size === 0} type="submit" variant="primary">
+            {isPending ? "授权中..." : "确认授权"}
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
 function FormField({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <Label className="grid gap-2 text-sm">
@@ -1081,4 +1344,21 @@ function latestTimestamp(values: Array<string | null | undefined>) {
 
 function isUpstreamError(audit: MCPAudit) {
   return Boolean(audit.error) || decisionVariant(audit.decision) === "warning";
+}
+
+function grantableCapabilityIDs(capabilities: MCPCapability[], grants: MCPGrant[], userId: string) {
+  const grantedCapabilityIDs = new Set(
+    grants.filter((grant) => grant.userId === userId && grant.grantType === "tool").map((grant) => grant.capabilityId)
+  );
+  return capabilities.filter((capability) => !grantedCapabilityIDs.has(capability.id)).map((capability) => capability.id);
+}
+
+function accountLabel(account: Account) {
+  const primary = account.name || account.email || account.phone || account.userId;
+  const secondary = [account.email, account.phone, account.userId].find((value) => value && value !== primary);
+  return secondary ? `${primary}（${secondary}）` : primary;
+}
+
+function isGrantAlreadyExistsError(error: unknown) {
+  return error instanceof APIError && error.status === 409 && error.message === "grant_already_exists";
 }

@@ -1066,23 +1066,27 @@ function agentToTopologyAgent(agent: AgentListItem): TopologyAgent {
 }
 
 function buildExternalTopologyAgents(agents: ModelActivityAgent[], range: string): TopologyAgent[] {
-  const grouped = new Map<string, { title: string; requests: number }>();
+  const grouped = new Map<string, { ownerName: string; clientName: string; requests: number; userId: string; clientType: string }>();
   for (const agent of agents) {
     const clientType = agent.client_type?.trim();
     if (!clientType || clientType === "unknown" || clientType === "clawee_agent" || agent.agent_id) continue;
-    const current = grouped.get(clientType) ?? { title: agent.agent_name || clientType, requests: 0 };
+    const userId = agent.user_id?.trim() ?? "";
+    const ownerName = agent.user_name?.trim() || userId || "未归属账户";
+    const clientName = agent.agent_name?.trim() || clientType;
+    const groupKey = `${userId}\u0000${clientType}`;
+    const current = grouped.get(groupKey) ?? { ownerName, clientName, requests: 0, userId, clientType };
     current.requests += agent.request_count;
-    if (!current.title && agent.agent_name) current.title = agent.agent_name;
-    grouped.set(clientType, current);
+    grouped.set(groupKey, current);
   }
   return [...grouped.entries()]
     .sort((left, right) => right[1].requests - left[1].requests || left[0].localeCompare(right[0]))
-    .map(([clientType, client]) => ({
-      id: `external/${clientType}`,
-      title: client.title,
+    .map(([, client]) => ({
+      id: `external/${encodeURIComponent(client.userId)}/${encodeURIComponent(client.clientType)}`,
+      title: `${client.ownerName} · ${client.clientName}`,
       meta: `外部客户端 · ${client.requests} 次模型调用`,
       status: "active",
-      href: `/admin/activity?source=model_proxy&range=${encodeURIComponent(range)}&client_type=${encodeURIComponent(clientType)}`
+      clientType: client.clientType,
+      href: `/admin/activity?source=model_proxy&range=${encodeURIComponent(range)}&user_id=${encodeURIComponent(client.userId)}&client_type=${encodeURIComponent(client.clientType)}`
     }));
 }
 

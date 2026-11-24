@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MCPAudit, MCPCapability, MCPGrant, MCPUpstreamServer } from "@/lib/mcp-admin-api";
 import {
+  createMCPGrant,
   createUpstreamServer,
   deleteMCPUpstreamServer,
   listMCPAudits,
@@ -15,6 +16,7 @@ import {
   updateMCPUpstreamServer,
   updateMCPUpstreamServerStatus
 } from "@/lib/mcp-admin-api";
+import { listAccounts } from "@/lib/accounts-api";
 
 import { MCPUpstreamServersPage } from "./mcp-upstream-servers";
 
@@ -22,6 +24,7 @@ vi.mock("@/lib/mcp-admin-api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/mcp-admin-api")>("@/lib/mcp-admin-api");
   return {
     ...actual,
+    createMCPGrant: vi.fn(),
     createUpstreamServer: vi.fn(),
     deleteMCPUpstreamServer: vi.fn(),
     listMCPAudits: vi.fn(),
@@ -34,6 +37,9 @@ vi.mock("@/lib/mcp-admin-api", async () => {
   };
 });
 
+vi.mock("@/lib/accounts-api", () => ({ listAccounts: vi.fn() }));
+
+const createMCPGrantMock = vi.mocked(createMCPGrant);
 const createUpstreamServerMock = vi.mocked(createUpstreamServer);
 const deleteMCPUpstreamServerMock = vi.mocked(deleteMCPUpstreamServer);
 const listMCPAuditsMock = vi.mocked(listMCPAudits);
@@ -43,6 +49,7 @@ const listMCPUpstreamServersMock = vi.mocked(listMCPUpstreamServers);
 const syncMCPUpstreamToolsMock = vi.mocked(syncMCPUpstreamTools);
 const updateMCPUpstreamServerMock = vi.mocked(updateMCPUpstreamServer);
 const updateMCPUpstreamServerStatusMock = vi.mocked(updateMCPUpstreamServerStatus);
+const listAccountsMock = vi.mocked(listAccounts);
 
 const activeServer = upstreamServer({ id: "crm-main", status: "active" });
 const disabledServer = upstreamServer({
@@ -84,6 +91,7 @@ describe("MCPUpstreamServersPage", () => {
       updatedAt: "2026-06-10T00:00:00Z"
     });
     deleteMCPUpstreamServerMock.mockResolvedValue(undefined);
+    listAccountsMock.mockResolvedValue([]);
   });
 
   it("opens server details only from the detail button", async () => {
@@ -230,6 +238,46 @@ describe("MCPUpstreamServersPage", () => {
     expect(screen.getByText("erp-main")).toBeInTheDocument();
   });
 
+  it("authorizes the selected account with the active tools of an upstream service", async () => {
+    listAccountsMock.mockResolvedValue([
+      { userId: "user-sales", name: "销售张三", email: "sales@example.com", status: "active", agent: null }
+    ]);
+    listMCPCapabilitiesMock.mockResolvedValue([
+      capability({ id: "cap-search", exposedName: "crm.customer.search" }),
+      capability({ id: "cap-disabled", exposedName: "crm.customer.delete", status: "disabled" }),
+      capability({ id: "cap-other", upstreamServerId: "erp-main", exposedName: "erp.inventory.query" })
+    ]);
+    createMCPGrantMock.mockResolvedValue({
+      id: "grant-created",
+      userId: "user-sales",
+      capabilityId: "cap-search",
+      grantType: "tool",
+      dataScope: null,
+      expiresAt: null,
+      createdBy: "admin",
+      createdAt: "2026-06-10T00:00:00Z",
+      updatedAt: "2026-06-10T00:00:00Z"
+    });
+    renderPage();
+
+    const row = await findRowByText("crm-main");
+    fireEvent.click(within(row).getByRole("button", { name: "给 crm-main 的账户授权" }));
+    expect(await screen.findByRole("heading", { name: "给账户授权" })).toBeInTheDocument();
+    expect(screen.getByText("crm.customer.search")).toBeInTheDocument();
+    expect(screen.queryByText("crm.customer.delete")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "授权账户" })).toHaveValue("user-sales"));
+
+    fireEvent.click(screen.getByRole("button", { name: "确认授权" }));
+    await waitFor(() => {
+      expect(createMCPGrantMock).toHaveBeenCalledWith({
+        userId: "user-sales",
+        capabilityId: "cap-search",
+        grantType: "tool"
+      });
+    });
+    expect(screen.getByText("已为账户完成“CRM Main”授权，新增 1 项工具权限。")).toBeInTheDocument();
+  });
+
   it("creates an upstream server without an environment field", async () => {
     renderPage();
 
@@ -305,6 +353,35 @@ function upstreamServer(overrides: Partial<MCPUpstreamServer>): MCPUpstreamServe
     mcpEndpoint: "https://gateway.example.com/mcp/servers/crm-main",
     mcpCanonicalEndpoint: "https://gateway.example.com/mcp/servers/crm-main",
     createdAt: "2026-06-09T00:00:00Z",
+    updatedAt: "2026-06-10T00:00:00Z",
+    ...overrides
+  };
+}
+
+function capability(overrides: Partial<MCPCapability>): MCPCapability {
+  return {
+    id: "cap-default",
+    upstreamServerId: "crm-main",
+    type: "tool",
+    upstreamName: "customer.search",
+    exposedName: "crm.customer.search",
+    title: "Customer search",
+    description: "",
+    inputSchema: {},
+    outputSchema: {},
+    annotations: {},
+    riskLevel: "low",
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
+    approvalRequired: false,
+    confirmRequired: false,
+    confirmTemplate: "",
+    status: "active",
+    schemaHash: "",
+    version: "",
+    lastSyncedAt: null,
+    createdAt: "2026-06-10T00:00:00Z",
     updatedAt: "2026-06-10T00:00:00Z",
     ...overrides
   };
