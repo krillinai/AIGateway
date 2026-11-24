@@ -153,7 +153,7 @@ function SessionRequestGroup({ group, onOpen }: { group: SessionRequestGroup; on
 function TurnRequestGroupView({ group, defaultOpen, onOpen }: { group: TurnRequestGroup; defaultOpen: boolean; onOpen(request: ModelRequestPreview): void }) {
   const latestRequest = group.requests[0];
   return <Collapsible defaultOpen={defaultOpen}>
-    <section className="min-w-0">
+    <section className="ml-3 min-w-0 border-l border-border/70 pl-2">
       <CollapsibleTrigger asChild>
         <Button aria-label={`${group.turnId ? `轮次 ${group.turnId}` : "未关联轮次"}，${group.requests.length} 次请求，展开或收起`} className="group h-auto w-full justify-start rounded-none px-4 py-2.5 text-left hover:bg-muted/30" variant="ghost">
           <MessageSquareText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
