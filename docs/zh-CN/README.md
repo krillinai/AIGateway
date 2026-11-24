@@ -5,7 +5,7 @@
 **面向FDE、企业CTO、CIO和IT团队 · 由KrillinAI 团队打造**
 
 统一接入模型、MCP 工具、知识库与共享资源，集中完成身份认证、权限控制、路由、审批、审计与用量分析。<br />
-**支持所有主流 Agent，你正在使用的 Agent 都可以接入；支持接入 1100+ 模型。**
+**支持 20+ 种主流 Agent，你正在使用的 Agent 都可以接入；支持接入 1100+ 模型。**
 
 **简体中文** · [English](../../README.md)
 
@@ -38,13 +38,14 @@ AI Gateway 本身不是聊天 Agent，也不负责运行桌面客户端或企业
 | AI Gateway                                              |
 |                                                         |
 | Shared Governance                                       |
-| Identity / RBAC / Agent Management / Gates / Audit      |
+| Identity / RBAC / Gates / Audit                          |
 | Token Usage / Usage Analytics                           |
 |                                                         |
 | Gateway Core                                            |
 | Model Gateway / MCP Gateway / A2A Gateway (planned)     |
 |                                                         |
 | Foundational Extensions                                 |
+| Agent Management                                        |
 | Skill Hub / Knowledge Bases / File System               |
 |                                                         |
 | Enterprise System Extensions                            |
@@ -68,7 +69,6 @@ AI Gateway 本身不是聊天 Agent，也不负责运行桌面客户端或企业
 | MCP 网关 | 纳管 `streamable_http` / `stdio` 上游，同步 tools、resources、prompts，按授权裁剪能力 |
 | A2A 网关 | Agent 间协作接入（规划中） |
 | 身份与权限 | 账户 Session、稳定 Agent ID、账户 Token、控制台 RBAC、数据资源授权 |
-| Agent 管理 | Agent 活动 |
 | 风险门禁 | MCP 用户确认与管理员审批，调用前重新校验授权、能力版本和参数快照 |
 | 审计 | 记录调用主体、路由、状态、耗时和错误，提供个人记录与管理端分析 |
 | Token 用量 | Token 总量、趋势、模型分布、员工排行及缺失用量提示 |
@@ -79,6 +79,7 @@ AI Gateway 本身不是聊天 Agent，也不负责运行桌面客户端或企业
 
 | 模块 | 能力 |
 | --- | --- |
+| Agent 管理 | Agent 活动 |
 | Skill Hub | Skill 包、版本、空间、Git 来源、审核发布与客户端下载 |
 | 知识库 | 百炼、RAGFlow 知识库接入与授权访问 |
 | 文件系统 | 共享空间、文件上传下载、本地或阿里云 OSS 存储 |
@@ -95,6 +96,20 @@ AI Gateway 本身不是聊天 Agent，也不负责运行桌面客户端或企业
 | 业务流程 | 工作流、审批 |
 
 企业系统扩展未配置时，不影响核心账户、RBAC 与 MCP 治理能力。
+
+## Agent 动态
+
+集中查看员工和 Agent 的使用情况，支持按今天、近 7 天或近 30 天筛选：
+
+- Token 总量、活跃员工、活跃 Agent 和完成轮次
+- Token 趋势及输入、缓存输入、输出构成
+- 使用方请求数与 Token 消耗排行
+- 模型和 MCP 使用分布
+- Agent 会话、轮次、状态与最近活动
+
+<div align="center">
+  <img src="../assets/agent-activity.jpg" alt="Agent 动态面板，展示 Token 趋势、使用排行、模型与 MCP 分布及 Agent 状态" width="100%" />
+</div>
 
 ## 支持的 Agent
 
@@ -343,7 +358,6 @@ $CLAWEE_OPS_DIR/
 - Agent 客户端：[ClaweeAgent](https://github.com/krillinai/ClaweeAgent)
 - 问题反馈：[GitHub Issues](https://github.com/krillinai/AIGateway/issues)
 - 发布版本：[GitHub Releases](https://github.com/krillinai/AIGateway/releases)
-- 企业部署：[hello@clawee.ai](mailto:hello@clawee.ai)
 
 欢迎通过 Issue、Pull Request、文档和测试改进 AI Gateway。如果这个项目对你的团队有帮助，欢迎 Star 仓库。
 

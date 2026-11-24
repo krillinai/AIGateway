@@ -5,7 +5,7 @@
 **For forward deployed engineers (FDEs), enterprise CTOs, CIOs, and IT teams · Built by KrillinAI**
 
 Connect models, MCP tools, knowledge bases, and shared resources through a single gateway for authentication, access control, routing, approvals, auditing, and usage analytics.<br />
-**Supports all mainstream Agents, including the one you already use, and over 1,100 models.**
+**Supports 20+ mainstream Agents, including the one you already use, and over 1,100 models.**
 
 [简体中文](./docs/zh-CN/README.md) · **English**
 
@@ -38,13 +38,14 @@ AI Gateway is not a chat Agent, and it does not run desktop clients or your busi
 | AI Gateway                                              |
 |                                                         |
 | Shared Governance                                       |
-| Identity / RBAC / Agent Management / Gates / Audit      |
+| Identity / RBAC / Gates / Audit                          |
 | Token Usage / Usage Analytics                           |
 |                                                         |
 | Gateway Core                                            |
 | Model Gateway / MCP Gateway / A2A Gateway (planned)     |
 |                                                         |
 | Foundational Extensions                                 |
+| Agent Management                                        |
 | Skill Hub / Knowledge Bases / File System               |
 |                                                         |
 | Enterprise System Extensions                            |
@@ -68,7 +69,6 @@ Technology stack: **Go 1.25 · Gin · React 19 · TypeScript · Vite · PostgreS
 | MCP Gateway | Manage `streamable_http` and `stdio` upstreams, synchronize tools, resources, and prompts, and filter capabilities by authorization |
 | A2A Gateway | Agent-to-agent collaboration (planned) |
 | Identity and Access | Account sessions, stable Agent IDs, account tokens, console RBAC, and data resource grants |
-| Agent Management | Agent activity |
 | Risk Gates | User confirmation and administrator approval for MCP calls, with authorization, capability version, and parameter snapshot checks before execution |
 | Auditing | Track callers, routes, status, latency, and errors with personal history and administrator analytics |
 | Token Usage | Token totals, trends, model distribution, employee rankings, and missing usage indicators |
@@ -79,6 +79,7 @@ Model and MCP audits are redacted and do not store plaintext API keys, cookies, 
 
 | Module | Capabilities |
 | --- | --- |
+| Agent Management | Agent activity |
 | Skill Hub | Skill packages, versions, spaces, Git sources, review and publishing workflows, and client downloads |
 | Knowledge Bases | Bailian and RAGFlow knowledge base integration with authorized access |
 | File System | Shared spaces, file upload and download, and local or Alibaba Cloud OSS storage |
@@ -95,6 +96,20 @@ Connect enterprise systems and office platforms, and orchestrate business proces
 | Business processes | Workflows and approvals |
 
 Enterprise system extensions are not required for core account, RBAC, and MCP governance capabilities.
+
+## Agent Activity
+
+View employee and Agent usage in one place. Filter by today, the last 7 days, or the last 30 days to explore:
+
+- Token totals, active employees, active Agents, and completed turns
+- Token trends and input, cached input, and output composition
+- Request counts and token consumption rankings by user
+- Model and MCP usage distribution
+- Agent sessions, turns, status, and latest activity
+
+<div align="center">
+  <img src="./docs/assets/agent-activity.jpg" alt="Agent Activity dashboard with token trends, usage rankings, model and MCP distribution, and Agent status" width="100%" />
+</div>
 
 ## Supported Agents
 
@@ -216,7 +231,7 @@ docker compose --env-file "$CLAWEE_OPS_DIR/.env" -f deploy/docker-compose.yml up
 
 Open `http://127.0.0.1:1904`. The published image is `ghcr.io/krillinai/aigateway-server`.
 
-On Linux hosts, allow container UID/GID `65532` to read the external configuration. See the [production deployment guide](./server/docs/deployment/production.md) for production permissions, HTTPS, and backup procedures.
+On Linux hosts, allow container UID/GID `65532` to read the external configuration. See the [production deployment guide](./server/docs/en/deployment/production.md) for production permissions, HTTPS, and backup procedures.
 
 </details>
 
@@ -286,7 +301,7 @@ A `stdio` upstream executes commands on the Gateway host. Only configure reviewe
 
 In [ClaweeAgent](https://github.com/krillinai/ClaweeAgent), set the Gateway Origin to your deployment address. The local default is `http://127.0.0.1:1904`. Then register or sign in with a Gateway account.
 
-See [Clawee Agent integration](./server/docs/integration/clawee-agent.md) and [upstream MCP Server integration](./server/docs/integration/upstream-mcp.md) for integration details.
+See [Clawee Agent integration](./server/docs/en/integration/clawee-agent.md) and [upstream MCP Server integration](./server/docs/en/integration/upstream-mcp.md) for integration details.
 
 ## Configuration and Development
 
@@ -308,7 +323,7 @@ Bound fields can be overridden with `CLAW_GATEWAY_*` environment variables, for 
 | `CLAW_GATEWAY_MCP_PUBLIC_BASE_URL` | Public Gateway Origin |
 | `CLAW_GATEWAY_MODEL_ACCESS_MODE` | `platform_managed` or `enterprise_managed` |
 
-See the [configuration reference](./server/docs/getting-started/configuration.md) for all fields and secret requirements.
+See the [configuration reference](./server/docs/en/getting-started/configuration.md) for all fields and secret requirements.
 
 Common development commands:
 
@@ -326,16 +341,16 @@ Common development commands:
 
 Server integration tests must use isolated PostgreSQL databases. Use `CLAW_GATEWAY_TEST_DATABASE_URL` to specify a `_test` database, and never run tests against development or production databases.
 
-Before deploying to production, review the security and operations documentation and implement HTTPS, secret management, persistence, backups, migrations, and metrics access controls. Report security issues privately using the [security reporting guide](./SECURITY.md).
+Before deploying to production, review the security and operations documentation and implement HTTPS, secret management, persistence, backups, migrations, and metrics access controls. Report security issues privately using the [security reporting guide](./docs/en/security.md).
 
 ## Documentation
 
 - [AI Gateway 用户与管理员指南（中文图文）](./docs/delivery/user-guides/AIGateway用户与管理员指南.md) · [ClaweeAgent 用户指南（中文）](https://github.com/krillinai/ClaweeAgent/blob/main/docs/delivery/user-guides/Clawee用户指南.md)
-- **Architecture and permissions:** [Project responsibilities](./docs/architecture.md) · [Gateway architecture](./server/docs/architecture/overview.md) · [Security and permissions](./server/docs/architecture/security-and-permissions.md)
-- **Installation and configuration:** [Local development](./server/docs/getting-started/development.md) · [Configuration reference](./server/docs/getting-started/configuration.md) · [Production deployment](./server/docs/deployment/production.md)
-- **Client integration:** [Clawee Agent](./server/docs/integration/clawee-agent.md) · [MCP upstreams](./server/docs/integration/upstream-mcp.md) · [HTTP API](./server/docs/reference/http-api.md)
+- **Architecture and permissions:** [Project responsibilities](./docs/en/architecture.md) · [Gateway architecture](./server/docs/en/architecture/overview.md) · [Security and permissions](./server/docs/en/architecture/security-and-permissions.md)
+- **Installation and configuration:** [Local development](./server/docs/en/getting-started/development.md) · [Configuration reference](./server/docs/en/getting-started/configuration.md) · [Production deployment](./server/docs/en/deployment/production.md)
+- **Client integration:** [Clawee Agent](./server/docs/en/integration/clawee-agent.md) · [MCP upstreams](./server/docs/en/integration/upstream-mcp.md) · [HTTP API](./server/docs/en/reference/http-api.md)
 - **Operations and development:** [Validation and operations](./docs/validation-and-operations.md) · [Operations guide](./docs/operations/operations-guide.md) · [Management console guidelines](./docs/frontend/frontend-development-guidelines.md)
-- **Project collaboration:** [Contributing guide](./CONTRIBUTING.md) · [Repository maintenance](./docs/repository-maintenance.md) · [Third-party notices](./third_party/README.md)
+- **Project collaboration:** [Contributing guide](./docs/en/contributing.md) · [Repository maintenance](./docs/en/repository-maintenance.md) · [Third-party notices](./third_party/README.md)
 
 ## Community and Support
 
@@ -343,8 +358,6 @@ Before deploying to production, review the security and operations documentation
 - Agent client: [ClaweeAgent](https://github.com/krillinai/ClaweeAgent)
 - Issue reporting: [GitHub Issues](https://github.com/krillinai/AIGateway/issues)
 - Releases: [GitHub Releases](https://github.com/krillinai/AIGateway/releases)
-- Enterprise deployment: [hello@clawee.ai](mailto:hello@clawee.ai)
-
 Contributions through issues, pull requests, documentation, and tests are welcome. If AI Gateway helps your team, please consider starring the repository.
 
 ## License
