@@ -17,6 +17,7 @@ import {
 import { listKnowledgeBases } from "@/lib/knowledge-api";
 import { getAgentActivityList } from "@/lib/office-api";
 import type { AgentActivityList, AgentListItem } from "@/lib/office-api";
+import { getModelActivityOverview } from "@/lib/model-activity-api";
 import { listSharedSpaces } from "@/lib/shared-files-api";
 import { listSkills } from "@/lib/skillhub-api";
 
@@ -50,6 +51,11 @@ vi.mock("@/lib/office-api", async () => {
   };
 });
 
+vi.mock("@/lib/model-activity-api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/model-activity-api")>("@/lib/model-activity-api");
+  return { ...actual, getModelActivityOverview: vi.fn() };
+});
+
 vi.mock("@/lib/shared-files-api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/shared-files-api")>("@/lib/shared-files-api");
   return { ...actual, listSharedSpaces: vi.fn() };
@@ -68,6 +74,7 @@ const listMCPGrantsMock = vi.mocked(listMCPGrants);
 const listMCPUpstreamServersMock = vi.mocked(listMCPUpstreamServers);
 const listKnowledgeBasesMock = vi.mocked(listKnowledgeBases);
 const getAgentActivityListMock = vi.mocked(getAgentActivityList);
+const getModelActivityOverviewMock = vi.mocked(getModelActivityOverview);
 const listSharedSpacesMock = vi.mocked(listSharedSpaces);
 const listSkillsMock = vi.mocked(listSkills);
 
@@ -303,6 +310,26 @@ describe("AdminOverviewPage", () => {
     listMCPUpstreamServersMock.mockResolvedValue([]);
     listKnowledgeBasesMock.mockResolvedValue([]);
     getAgentActivityListMock.mockResolvedValue(mockOfficeActivity());
+    getModelActivityOverviewMock.mockResolvedValue({
+      summary: {
+        request_count: 0,
+        session_count: 0,
+        turn_count: 0,
+        total_tokens: null,
+        success_rate: null,
+        avg_duration_ms: null,
+        last_request_at: null,
+        processing_count: 0,
+        stale_started_count: 0,
+        usage_complete_count: 0,
+        usage_partial_count: 0,
+        usage_unavailable_count: 0,
+        active_users: 0,
+        active_agents: 0
+      },
+      agents: [],
+      meta: { source: "model_proxy", schema_version: 1, range: "7d", timezone: "Asia/Shanghai", start: "2026-06-04T00:00:00+08:00", end: "2026-06-11T00:00:00+08:00", page: 1, page_size: 100, total: 0 }
+    });
     listSharedSpacesMock.mockResolvedValue({ items: [], meta: { next_cursor: "", has_next: false } });
     listSkillsMock.mockResolvedValue([]);
   });
@@ -354,6 +381,58 @@ describe("AdminOverviewPage", () => {
     expect(listMCPAuditsMock).toHaveBeenCalledTimes(1);
     expect(listMCPAuditsMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 200, createdFrom: expect.any(String) }));
     expect(getAgentActivityListMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders external model clients as topology agents", async () => {
+    listMCPUpstreamServersMock.mockResolvedValue([mockServer(1)]);
+    getModelActivityOverviewMock.mockResolvedValueOnce({
+      summary: {
+        request_count: 8,
+        session_count: 0,
+        turn_count: 0,
+        total_tokens: null,
+        success_rate: null,
+        avg_duration_ms: null,
+        last_request_at: "2026-06-11T00:00:00Z",
+        processing_count: 0,
+        stale_started_count: 0,
+        usage_complete_count: 0,
+        usage_partial_count: 0,
+        usage_unavailable_count: 8,
+        active_users: 1,
+        active_agents: 1
+      },
+      agents: [{
+        request_count: 8,
+        session_count: 0,
+        turn_count: 0,
+        total_tokens: null,
+        success_rate: null,
+        avg_duration_ms: null,
+        last_request_at: "2026-06-11T00:00:00Z",
+        processing_count: 0,
+        stale_started_count: 0,
+        usage_complete_count: 0,
+        usage_partial_count: 0,
+        usage_unavailable_count: 8,
+        user_id: "user_1",
+        user_name: "林晓",
+        client_type: "workbuddy",
+        agent_id: "",
+        agent_name: "WorkBuddy"
+      }],
+      meta: { source: "model_proxy", schema_version: 1, range: "7d", timezone: "Asia/Shanghai", start: "2026-06-04T00:00:00+08:00", end: "2026-06-11T00:00:00+08:00", page: 1, page_size: 100, total: 1 }
+    });
+
+    renderAdminOverviewPage();
+
+    const topology = await screen.findByRole("region", { name: "Agent 接入治理链路" });
+    expect(await within(topology).findByText("WorkBuddy")).toBeInTheDocument();
+    expect(within(topology).getByText("外部客户端 · 8 次模型调用")).toBeInTheDocument();
+    expect(within(topology).getByRole("link", { name: "查看 WorkBuddy 详情" })).toHaveAttribute(
+      "href",
+      "/admin/activity?source=model_proxy&range=today&client_type=workbuddy"
+    );
   });
 
   it("使用真实审计数据展示趋势、结果、能力排行和活跃排行", async () => {

@@ -453,11 +453,12 @@ type ModelActivityContent struct {
 }
 
 const (
-	ModelActivityClientUnknown = "unknown"
-	ModelActivityClientClawee  = "clawee_agent"
-	ModelActivityClientCodex   = "codex_cli"
-	ModelActivityClientClaude  = "claude_code"
-	ModelActivityClientGeneric = "generic"
+	ModelActivityClientUnknown   = "unknown"
+	ModelActivityClientClawee    = "clawee_agent"
+	ModelActivityClientCodex     = "codex_cli"
+	ModelActivityClientClaude    = "claude_code"
+	ModelActivityClientWorkBuddy = "workbuddy"
+	ModelActivityClientGeneric   = "generic"
 )
 
 type ModelProxyAuditRecord struct {

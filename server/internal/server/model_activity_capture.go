@@ -83,9 +83,27 @@ func modelActivityClientHint(h http.Header) string {
 		return mcpgateway.ModelActivityClientGeneric
 	case mcpgateway.ModelActivityClientCodex:
 		return mcpgateway.ModelActivityClientCodex
+	case mcpgateway.ModelActivityClientWorkBuddy:
+		return mcpgateway.ModelActivityClientWorkBuddy
+	}
+	for _, name := range []string{"X-Client-Product", "X-Client-Name", "X-Ide-Name", "X-Ide-Type"} {
+		value := strings.ToLower(modelActivityHeader(h, name))
+		switch {
+		case strings.Contains(value, "workbuddy"):
+			return mcpgateway.ModelActivityClientWorkBuddy
+		case strings.Contains(value, "codex"):
+			return mcpgateway.ModelActivityClientCodex
+		case strings.Contains(value, "claude"):
+			return mcpgateway.ModelActivityClientClaude
+		}
 	}
 	userAgent := strings.ToLower(h.Get("User-Agent"))
-	if strings.Contains(userAgent, "claude-code") || strings.Contains(userAgent, "claude-cli") || strings.Contains(userAgent, "claude_cli") {
+	switch {
+	case strings.Contains(userAgent, "workbuddy"):
+		return mcpgateway.ModelActivityClientWorkBuddy
+	case strings.Contains(userAgent, "codex"):
+		return mcpgateway.ModelActivityClientCodex
+	case strings.Contains(userAgent, "claude-code") || strings.Contains(userAgent, "claude-cli") || strings.Contains(userAgent, "claude_cli"):
 		return mcpgateway.ModelActivityClientClaude
 	}
 	return ""

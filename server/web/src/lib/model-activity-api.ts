@@ -49,8 +49,8 @@ function query(params: object) {
   Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "" && value !== false) search.set(key, String(value)); });
   return search.toString();
 }
-export function getModelActivityOverview(filter: ModelActivityFilter, page = 1) {
-  return adminApi.get<ModelActivityOverview>(`/activity/model-overview?${query({ ...filter, page, page_size: 20 })}`);
+export function getModelActivityOverview(filter: ModelActivityFilter, page = 1, pageSize = 20) {
+  return adminApi.get<ModelActivityOverview>(`/activity/model-overview?${query({ ...filter, page, page_size: pageSize })}`);
 }
 export function getModelRequests(filter: ModelActivityFilter, cursor?: ModelRequestCursor) {
   return adminApi.get<ModelRequests>(`/activity/model-requests?${query({ ...filter, ...cursor, limit: 20 })}`);

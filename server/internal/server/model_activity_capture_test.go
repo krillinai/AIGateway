@@ -70,6 +70,38 @@ func TestBindModelActivityUsesGenericHeadersWithoutAgentHeader(t *testing.T) {
 	}
 }
 
+func TestBindModelActivityIdentifiesExternalClients(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		headers    map[string]string
+		wantClient string
+	}{
+		{
+			name:       "WorkBuddy product headers",
+			headers:    map[string]string{"X-Client-Product": "WorkBuddy", "X-Ide-Name": "WorkBuddy", "User-Agent": "WorkBuddy/5.11.3 CLI/2.176.0"},
+			wantClient: mcpgateway.ModelActivityClientWorkBuddy,
+		},
+		{
+			name:       "Codex user agent",
+			headers:    map[string]string{"User-Agent": "codex_cli_rs/0.1.0"},
+			wantClient: mcpgateway.ModelActivityClientCodex,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			for key, value := range tc.headers {
+				c.Request.Header.Set(key, value)
+			}
+			record := mcpgateway.ModelProxyAuditRecord{UserID: "user", Endpoint: "/v1/chat/completions"}
+			bindModelActivity(c, Options{}, &record, map[string]any{"messages": []any{}})
+			if record.ClientType != tc.wantClient || record.AgentID != "" {
+				t.Fatalf("外部客户端识别错误: client=%q agent=%q", record.ClientType, record.AgentID)
+			}
+		})
+	}
+}
+
 func TestModelActivityInputAndCapture(t *testing.T) {
 	for _, tc := range []struct{ endpoint, body, want string }{
 		{"/v1/responses", `{"input":"你好"}`, "你好"},

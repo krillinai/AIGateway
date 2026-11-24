@@ -68,6 +68,7 @@ import type { MCPAgent, MCPAudit } from "@/lib/mcp-admin-api";
 import { canDecideMCPGate, deriveMCPDashboardSummary, formatDuration } from "@/lib/mcp-admin-ui";
 import { getAgentActivityList } from "@/lib/office-api";
 import type { AgentListItem } from "@/lib/office-api";
+import { getModelActivityOverview, type ModelActivityAgent } from "@/lib/model-activity-api";
 import { permissions } from "@/lib/rbac-api";
 import { listSharedSpaces } from "@/lib/shared-files-api";
 import { listSkills } from "@/lib/skillhub-api";
@@ -139,6 +140,7 @@ export function AdminOverviewPage() {
   const [trendSeries, setTrendSeries] = useState<TrendSeries>("requests");
   const [activityMode, setActivityMode] = useState<ActivityMode>("users");
   const [updatedAt, setUpdatedAt] = useState(() => formatUpdatedAt(new Date()));
+  const modelActivityRange = range === "24h" ? "today" : range;
 
   const mcpSummaryQuery = useQuery({
     queryKey: ["mcp-dashboard-summary", { canReadUpstreams, canReadCapabilities, canReadAgents, canReadGrants, canReadAudits, range }],
@@ -166,6 +168,12 @@ export function AdminOverviewPage() {
     queryKey: ["office-agent-activity"],
     queryFn: getAgentActivityList,
     enabled: canReadActivity
+  });
+  const canLoadExternalClients = canReadActivity && canReadAgents && canReadUpstreams;
+  const externalClientActivityQuery = useQuery({
+    queryKey: ["admin-overview-external-client-activity", modelActivityRange],
+    queryFn: () => getModelActivityOverview({ range: modelActivityRange }, 1, 100),
+    enabled: canLoadExternalClients
   });
   const pendingGatesQuery = useQuery({
     queryKey: ["mcp-dashboard-pending-gates"],
@@ -196,7 +204,10 @@ export function AdminOverviewPage() {
   const governedAgentCount = canAssessAgentCoverage ? governanceRows.filter((row) => row.kind === "linked").length : 0;
   const ungovernedAgentCount = canAssessAgentCoverage ? governanceRows.filter((row) => row.kind === "office_only").length : 0;
   const offlineAgentCount = governanceRows.filter((row) => row.officeAgent?.status === "offline").length;
-  const topologyAgents = (officeActivityQuery.data?.agents ?? []).map(agentToTopologyAgent);
+  const topologyAgents = [
+    ...(officeActivityQuery.data?.agents ?? []).map(agentToTopologyAgent),
+    ...buildExternalTopologyAgents(externalClientActivityQuery.data?.agents ?? [], modelActivityRange)
+  ];
   const pendingGates = (pendingGatesQuery.data ?? []).filter((gate) => canDecideMCPGate(gate.status, gate.expiresAt));
   const pendingApprovalGates = pendingGates.filter((gate) => gate.type === "admin_approval");
   const pendingConfirmationGates = pendingGates.filter((gate) => gate.type === "user_confirmation");
@@ -222,9 +233,9 @@ export function AdminOverviewPage() {
   };
   const governanceActionCount = Object.values(governanceBreakdown).reduce((total, count) => total + count, 0);
   const isMCPLoading = mcpSummaryQuery.isLoading;
-  const isAgentLoading = isMCPLoading || (canReadActivity && officeActivityQuery.isLoading);
+  const isAgentLoading = isMCPLoading || (canReadActivity && officeActivityQuery.isLoading) || (canLoadExternalClients && externalClientActivityQuery.isLoading);
   const isWorkbenchLoading = isMCPLoading || (canReadGates && pendingGatesQuery.isLoading) || (canReadActivity && officeActivityQuery.isLoading);
-  const isRefreshing = mcpSummaryQuery.isFetching || officeActivityQuery.isFetching || pendingGatesQuery.isFetching || enterpriseResourcesQuery.isFetching;
+  const isRefreshing = mcpSummaryQuery.isFetching || officeActivityQuery.isFetching || externalClientActivityQuery.isFetching || pendingGatesQuery.isFetching || enterpriseResourcesQuery.isFetching;
   const hasMetricAccess = canAssessAgentCoverage || canReadGates || canReadCapabilities || canReadUpstreams || canReadAudits;
   const hasWorkbenchAccess = canReadGates || canReadCapabilities || canAssessAgentCoverage || canReadUpstreams;
   const showWorkbench = hasWorkbenchAccess && (isWorkbenchLoading || governanceActionCount > 0);
@@ -285,6 +296,7 @@ export function AdminOverviewPage() {
   async function refreshDashboard() {
     const tasks: Promise<unknown>[] = [mcpSummaryQuery.refetch()];
     if (canReadActivity) tasks.push(officeActivityQuery.refetch());
+    if (canLoadExternalClients) tasks.push(externalClientActivityQuery.refetch());
     if (canReadGates) tasks.push(pendingGatesQuery.refetch());
     if (hasEnterpriseAccess) tasks.push(enterpriseResourcesQuery.refetch());
     await Promise.all(tasks);
@@ -1051,6 +1063,27 @@ function agentToTopologyAgent(agent: AgentListItem): TopologyAgent {
     status: agent.status || "unknown",
     href: `/admin/activity/detail?collector_id=${encodeURIComponent(agent.collector_id)}&agent_id=${encodeURIComponent(agent.agent_id)}`
   };
+}
+
+function buildExternalTopologyAgents(agents: ModelActivityAgent[], range: string): TopologyAgent[] {
+  const grouped = new Map<string, { title: string; requests: number }>();
+  for (const agent of agents) {
+    const clientType = agent.client_type?.trim();
+    if (!clientType || clientType === "unknown" || clientType === "clawee_agent" || agent.agent_id) continue;
+    const current = grouped.get(clientType) ?? { title: agent.agent_name || clientType, requests: 0 };
+    current.requests += agent.request_count;
+    if (!current.title && agent.agent_name) current.title = agent.agent_name;
+    grouped.set(clientType, current);
+  }
+  return [...grouped.entries()]
+    .sort((left, right) => right[1].requests - left[1].requests || left[0].localeCompare(right[0]))
+    .map(([clientType, client]) => ({
+      id: `external/${clientType}`,
+      title: client.title,
+      meta: `外部客户端 · ${client.requests} 次模型调用`,
+      status: "active",
+      href: `/admin/activity?source=model_proxy&range=${encodeURIComponent(range)}&client_type=${encodeURIComponent(clientType)}`
+    }));
 }
 
 function summarizeAuditResults(audits: MCPAudit[]) {

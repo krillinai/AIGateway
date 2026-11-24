@@ -201,6 +201,8 @@ func modelActivityClientLabel(clientType string) string {
 		return "Codex CLI"
 	case mcpgateway.ModelActivityClientClaude:
 		return "Claude Code"
+	case mcpgateway.ModelActivityClientWorkBuddy:
+		return "WorkBuddy"
 	case mcpgateway.ModelActivityClientGeneric:
 		return "其他客户端"
 	default:
