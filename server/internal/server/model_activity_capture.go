@@ -109,6 +109,13 @@ func modelActivityClientHint(h http.Header) string {
 	return ""
 }
 
+func modelActivityWorkBuddyIDs(h http.Header) (sessionID, turnID string) {
+	if modelActivityClientHint(h) != mcpgateway.ModelActivityClientWorkBuddy {
+		return "", ""
+	}
+	return modelActivityHeader(h, "X-Conversation-Id"), modelActivityHeader(h, "X-Conversation-Request-Id")
+}
+
 func bindModelActivity(c *gin.Context, opts Options, record *mcpgateway.ModelProxyAuditRecord, payload map[string]any) {
 	if c.Request.Method != http.MethodPost || (record.Endpoint != "/v1/responses" && record.Endpoint != "/v1/chat/completions") {
 		return
@@ -136,6 +143,7 @@ func bindModelActivity(c *gin.Context, opts Options, record *mcpgateway.ModelPro
 	}
 
 	metadataSession, metadataTurn, metadataPresent := modelActivityTurnMetadata(c.Request.Header)
+	workBuddySession, workBuddyTurn := modelActivityWorkBuddyIDs(c.Request.Header)
 	if !agentHeaderPresent && metadataPresent {
 		record.ClientType = mcpgateway.ModelActivityClientCodex
 	}
@@ -156,6 +164,8 @@ func bindModelActivity(c *gin.Context, opts Options, record *mcpgateway.ModelPro
 			record.SessionID, record.SessionSource = metadataSession, "codex_thread_id"
 		} else if sessionID := modelActivityHeader(c.Request.Header, "X-Client-Session-ID"); sessionID != "" {
 			record.SessionID, record.SessionSource = sessionID, "client_header"
+		} else if workBuddySession != "" {
+			record.SessionID, record.SessionSource = workBuddySession, "workbuddy_conversation_id"
 		}
 	}
 	if metadataPresent && (!agentHeaderPresent || agentValid) {
@@ -168,6 +178,8 @@ func bindModelActivity(c *gin.Context, opts Options, record *mcpgateway.ModelPro
 		}
 	} else if turnID := modelActivityHeader(c.Request.Header, "X-Client-Turn-ID"); turnID != "" {
 		record.TurnID, record.TurnSource = turnID, "client_header"
+	} else if workBuddyTurn != "" {
+		record.TurnID, record.TurnSource = workBuddyTurn, "workbuddy_request_id"
 	}
 	if record.TurnID != "" && record.SessionID == "" {
 		record.TurnID, record.TurnSource = "", ""

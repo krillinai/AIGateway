@@ -70,6 +70,23 @@ func TestBindModelActivityUsesGenericHeadersWithoutAgentHeader(t *testing.T) {
 	}
 }
 
+func TestBindModelActivityUsesWorkBuddyConversationHeaders(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("X-Client-Product", "WorkBuddy")
+	c.Request.Header.Set("X-Conversation-Id", "conversation-workbuddy")
+	c.Request.Header.Set("X-Conversation-Request-Id", "request-workbuddy")
+	c.Request.Header.Set("X-Conversation-Message-Id", "message-workbuddy")
+	record := mcpgateway.ModelProxyAuditRecord{UserID: "user", Endpoint: "/v1/chat/completions"}
+	bindModelActivity(c, Options{}, &record, map[string]any{"messages": []any{}})
+	if record.ClientType != mcpgateway.ModelActivityClientWorkBuddy || record.SessionID != "conversation-workbuddy" || record.TurnID != "request-workbuddy" {
+		t.Fatalf("WorkBuddy 关联错误: %+v", record)
+	}
+	if record.SessionSource != "workbuddy_conversation_id" || record.TurnSource != "workbuddy_request_id" {
+		t.Fatalf("WorkBuddy 关联来源错误: %+v", record)
+	}
+}
+
 func TestBindModelActivityIdentifiesExternalClients(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
