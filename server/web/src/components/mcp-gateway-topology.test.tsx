@@ -132,6 +132,24 @@ describe("MCPGatewayTopology", () => {
     );
   });
 
+  it("uses the matching brand icon for supported external clients", () => {
+    render(
+      <MCPGatewayTopology
+        agents={[
+          agent(1, { title: "Codex CLI", clientType: "codex_cli" }),
+          agent(2, { title: "WorkBuddy", clientType: "workbuddy" })
+        ]}
+        servers={[]}
+        summary={summary()}
+      />
+    );
+
+    const codexRow = screen.getByRole("link", { name: "查看 Codex CLI 详情" });
+    const workBuddyRow = screen.getByRole("link", { name: "查看 WorkBuddy 详情" });
+    expect(codexRow.querySelector("img")).toHaveAttribute("src", "/assets/agent-icons/codex-cli.svg");
+    expect(workBuddyRow.querySelector("img")).toHaveAttribute("src", "/assets/agent-icons/workbuddy.svg");
+  });
+
   it("attaches topology animation hooks", () => {
     render(<MCPGatewayTopology agents={[agent(1), agent(2)]} servers={[upstream(1)]} summary={summary()} />);
 

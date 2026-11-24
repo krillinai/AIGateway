@@ -55,6 +55,7 @@ export type TopologyAgent = {
   meta: string;
   status: string;
   href: string;
+  clientType?: string;
 };
 
 type MCPGatewayTopologyProps = {
@@ -506,10 +507,43 @@ function agentToRow(agent: TopologyAgent): TopologyRow {
     title: agent.title || agent.id,
     meta: agent.meta,
     status: agent.status || "unknown",
-    icon: Bot,
+    icon: topologyAgentIcon(agent.clientType),
     target: `agent:${agent.id}`,
     href: agent.href
   };
+}
+
+function topologyAgentIcon(clientType?: string): React.ComponentType<{ className?: string }> {
+  switch (clientType?.trim().toLowerCase()) {
+    case "codex_cli":
+      return CodexCliIcon;
+    case "workbuddy":
+      return WorkBuddyIcon;
+    default:
+      return Bot;
+  }
+}
+
+function CodexCliIcon({ className }: { className?: string }) {
+  return (
+    <img
+      src="/assets/agent-icons/codex-cli.svg"
+      alt=""
+      aria-hidden="true"
+      className={cn("object-contain", className)}
+    />
+  );
+}
+
+function WorkBuddyIcon({ className }: { className?: string }) {
+  return (
+    <img
+      src="/assets/agent-icons/workbuddy.svg"
+      alt=""
+      aria-hidden="true"
+      className={cn("object-contain", className)}
+    />
+  );
 }
 
 function serverToRow(server: MCPUpstreamServer): TopologyRow {
