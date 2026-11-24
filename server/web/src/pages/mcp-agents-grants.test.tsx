@@ -375,6 +375,37 @@ describe("MCPAgentsGrantsPage", () => {
     ]);
   });
 
+  it("shows external model clients as read-only identities with account grants", async () => {
+    listMCPAgentsMock.mockResolvedValue([
+      {
+        ...agents[0],
+        agentId: "external:codex_cli:usr_1",
+        name: "Codex CLI",
+        clientId: "codex_cli",
+        creationSource: "external",
+        external: true,
+        externalClientType: "codex_cli",
+        activityRequestCount: 8,
+        lastActivityAt: "2026-08-05T09:01:00Z"
+      }
+    ]);
+
+    renderPage();
+
+    const row = await findRowByText("Codex CLI");
+    expect(within(row).getAllByText("外部客户端")).toHaveLength(2);
+    expect(within(row).getByText("外部客户端 ID")).toBeInTheDocument();
+    expect(within(row).getByText("模型调用 8 次")).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "查看授权" })).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /密钥详情/ })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "迁移" })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /删除 MCP 身份/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole("button", { name: "查看授权" }));
+    expect(await screen.findByRole("heading", { name: "授权信息" })).toBeInTheDocument();
+    expect(await screen.findByText("crm.customer.search")).toBeInTheDocument();
+  });
+
   it("binds an Office-only Agent to an existing unbound MCP identity", async () => {
     listMCPAgentsMock.mockResolvedValue([{ ...agents[0], agentId: "mcp_available", name: "可用治理身份" }]);
     getAgentActivityListMock.mockResolvedValue(officeActivity([

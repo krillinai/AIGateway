@@ -119,6 +119,13 @@ export function AgentGovernanceTable({
                           <span className="break-all font-mono">{office.device_id}</span>
                         </div>
                       </div>
+                    ) : mcp?.external ? (
+                      <div className="grid gap-1">
+                        <Badge className="w-fit" variant="outline">外部客户端</Badge>
+                        <span className="text-xs text-muted-foreground">模型代理活动</span>
+                        {mcp.activityRequestCount !== undefined ? <span className="text-xs text-muted-foreground">模型调用 {mcp.activityRequestCount} 次</span> : null}
+                        <span className="whitespace-nowrap text-xs text-muted-foreground">最近调用 {formatDateTime(mcp.lastActivityAt)}</span>
+                      </div>
                     ) : (
                       <Badge variant="muted">未接入采集</Badge>
                     )}
@@ -128,7 +135,7 @@ export function AgentGovernanceTable({
                       <div className="grid gap-1">
                         <Badge className="w-fit max-w-full truncate" title={mcp.status} variant={mcpStatusVariant(mcp.status)}>{mcpStatusLabel(mcp.status)}</Badge>
                         <div className="grid gap-0.5 text-xs text-muted-foreground">
-                          <span>MCP Agent ID</span>
+                          <span>{mcp.external ? "外部客户端 ID" : "MCP Agent ID"}</span>
                           <span className="break-all font-mono">{mcp.agentId}</span>
                         </div>
                       </div>
@@ -168,7 +175,7 @@ export function AgentGovernanceTable({
                     <div className="flex flex-wrap items-center gap-2">
                       {mcp ? (
                         <>
-                          {canOpenToken && mcp.boundUserId ? <Button
+                          {canOpenToken && mcp.boundUserId && !mcp.external ? <Button
                             aria-label={`查看 ${row.displayName} 密钥详情`}
                             onClick={(event) => stopAndRun(event, () => onOpenToken(mcp))}
                             size="sm"
@@ -180,12 +187,12 @@ export function AgentGovernanceTable({
                           {canReadGrants && mcp.boundUserId ? <Button onClick={(event) => stopAndRun(event, () => onOpenGrants(mcp))} size="sm" variant="secondary">
                             查看授权
                           </Button> : null}
-                          {canTransferAgents && mcp.boundUserId ? (
+                          {canTransferAgents && mcp.boundUserId && !mcp.external ? (
                             <Button onClick={(event) => stopAndRun(event, () => onTransfer(mcp))} size="sm" variant="outline">
                               <MoveRight data-icon="inline-start" />迁移
                             </Button>
                           ) : null}
-                          {canDeleteAgents ? (
+                          {canDeleteAgents && !mcp.external ? (
                             <Button
                               aria-label={`删除 MCP 身份 ${row.displayName}`}
                               onClick={(event) => stopAndRun(event, () => onDelete(mcp))}

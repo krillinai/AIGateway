@@ -261,6 +261,67 @@ func agentListItem(ctx context.Context, accountSvc *accounts.Service, collectorL
 	return item, nil
 }
 
+func externalAgentListItems(ctx context.Context, opts Options, status string) []gin.H {
+	if modelAccessMode(opts) != ModelAccessPlatformManaged || opts.ProxyGateway == nil || opts.AccountService == nil {
+		return nil
+	}
+	activityStore, ok := opts.ProxyGateway.Store().(mcpgateway.ModelActivityStore)
+	if !ok {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	items := make([]gin.H, 0)
+	for _, clientType := range []string{
+		mcpgateway.ModelActivityClientCodex,
+		mcpgateway.ModelActivityClientWorkBuddy,
+		mcpgateway.ModelActivityClientClaude,
+		mcpgateway.ModelActivityClientGeneric,
+	} {
+		overview, err := activityStore.ModelActivityOverview(ctx, mcpgateway.ModelActivityFilter{
+			ClientType: clientType,
+			Start:      now.AddDate(0, 0, -30),
+			End:        now.Add(time.Second),
+			Now:        now,
+			Page:       1,
+			PageSize:   1000,
+		})
+		if err != nil {
+			continue
+		}
+		for _, activity := range overview.Agents {
+			if activity.AgentID != "" || activity.UserID == "" || activity.LastRequestAt == nil {
+				continue
+			}
+			account, err := opts.AccountService.Account(ctx, activity.UserID)
+			if err != nil || (status != "" && account.Status != status) {
+				continue
+			}
+			agentID := "external:" + clientType + ":" + activity.UserID
+			lastActivityAt := activity.LastRequestAt.UTC()
+			items = append(items, gin.H{
+				"AgentID":              agentID,
+				"ClientID":             clientType,
+				"Name":                 modelActivityClientLabel(clientType),
+				"TenantID":             "",
+				"ActorID":              activity.UserID,
+				"Status":               account.Status,
+				"CreationSource":       mcpgateway.AgentCreationSourceExternal,
+				"CreatedAt":            lastActivityAt,
+				"UpdatedAt":            lastActivityAt,
+				"BoundUserID":          account.UserID,
+				"BoundUserName":        account.DisplayName(),
+				"BoundUserEmail":       account.Email,
+				"External":             true,
+				"ExternalClientType":   clientType,
+				"ActivityRequestCount": activity.RequestCount,
+				"LastActivityAt":       lastActivityAt,
+			})
+		}
+	}
+	return items
+}
+
 func mcpEndpointURL(req *http.Request) string {
 	scheme := "http"
 	if req.TLS != nil {
@@ -607,6 +668,7 @@ func mountAdminMCPResourceRoutes(admin *gin.RouterGroup, opts Options) {
 			}
 			out = append(out, item)
 		}
+		out = append(out, externalAgentListItems(c.Request.Context(), opts, c.Query("status"))...)
 		c.JSON(http.StatusOK, itemsResponse(out))
 	}
 	removeAgent := func(c *gin.Context) {

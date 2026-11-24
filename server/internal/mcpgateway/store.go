@@ -32,6 +32,7 @@ const (
 	AgentCreationSourceClaweeLogin = "clawee_login"
 	AgentCreationSourceManual      = "manual"
 	AgentCreationSourceLegacy      = "legacy"
+	AgentCreationSourceExternal    = "external"
 )
 
 type Store interface {

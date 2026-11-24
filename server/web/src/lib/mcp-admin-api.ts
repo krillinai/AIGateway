@@ -74,6 +74,17 @@ type MCPAgentResponse = {
   creationSource?: string;
   Collector?: MCPAgentCollectorResponse;
   collector?: MCPAgentCollectorResponse;
+  External?: boolean;
+  external?: boolean;
+  ExternalClientType?: string;
+  external_client_type?: string;
+  externalClientType?: string;
+  ActivityRequestCount?: number;
+  activity_request_count?: number;
+  activityRequestCount?: number;
+  LastActivityAt?: string;
+  last_activity_at?: string;
+  lastActivityAt?: string;
   CreatedAt: string;
   UpdatedAt: string;
 };
@@ -394,6 +405,10 @@ export type MCPAgent = {
   status: string;
   creationSource?: string;
   collector?: MCPAgentCollector;
+  external?: boolean;
+  externalClientType?: string;
+  activityRequestCount?: number;
+  lastActivityAt?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -632,6 +647,10 @@ function mapAgent(agent: MCPAgentResponse): MCPAgent {
       lastSeenAt: collector.last_seen_at ?? collector.lastSeenAt,
       status: collector.status
     } : undefined,
+    external: responseField(agent, "External", "external") ?? false,
+    externalClientType: responseField(agent, "ExternalClientType", "external_client_type") ?? agent.externalClientType,
+    activityRequestCount: responseField(agent, "ActivityRequestCount", "activity_request_count") ?? agent.activityRequestCount,
+    lastActivityAt: responseField(agent, "LastActivityAt", "last_activity_at") ?? agent.lastActivityAt,
     createdAt: responseField(agent, "CreatedAt", "created_at"),
     updatedAt: responseField(agent, "UpdatedAt", "updated_at")
   };

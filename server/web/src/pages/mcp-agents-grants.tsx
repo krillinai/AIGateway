@@ -217,7 +217,7 @@ export function MCPAgentsGrantsPage() {
     [officeAgentsQuery.data?.agents]
   );
   const availableMCPAgents = useMemo(
-    () => agents.filter((agent) => !linkedMCPAgentIDs.has(agent.agentId)),
+    () => agents.filter((agent) => !agent.external && !linkedMCPAgentIDs.has(agent.agentId)),
     [agents, linkedMCPAgentIDs]
   );
   const capabilityByID = useMemo(() => new Map(capabilities.map((item) => [item.id, item])), [capabilities]);
@@ -575,7 +575,7 @@ export function MCPAgentsGrantsPage() {
         </div>}
         title="智能体管理"
       >
-        统一查看 Collector 发现的运行实例与 MCP Gateway 治理身份。两者关联后合并为一个智能体。
+        统一查看 Collector 运行实例、模型代理发现的外部客户端与 MCP Gateway 治理身份。两者关联后合并为一个智能体。
       </PageHeader>
       {hasLoadError ? (
         <ErrorBlock>
@@ -592,7 +592,7 @@ export function MCPAgentsGrantsPage() {
         <CardHeader className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
             <CardTitle>智能体列表</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">点击列表行查看访问密钥；操作区可查看授权。</p>
+            <p className="mt-1 text-xs text-muted-foreground">已登记身份可查看访问密钥；操作区可查看授权。</p>
           </div>
           <Badge variant="muted">{filteredRows.length} 条可见</Badge>
         </CardHeader>

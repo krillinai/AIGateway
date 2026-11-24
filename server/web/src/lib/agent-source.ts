@@ -8,6 +8,8 @@ export function agentCreationSourceLabel(source?: string): string {
       return "手动创建";
     case "legacy":
       return "历史数据";
+    case "external":
+      return "外部客户端";
     default:
       return "未知";
   }
