@@ -231,6 +231,10 @@ function mapUserAgent(access: AgentAccess): MCPAgent {
     actorId: access.agent.actorId,
     status: access.agent.status,
     creationSource: access.agent.creationSource,
+    external: access.agent.external,
+    externalClientType: access.agent.externalClientType,
+    activityRequestCount: access.agent.activityRequestCount,
+    lastActivityAt: access.agent.lastActivityAt,
     collector: access.agent.collector,
     createdAt: "",
     updatedAt: access.agent.updatedAt ?? ""

@@ -126,6 +126,18 @@ describe("AgentAccessPage", () => {
     expect(screen.queryByRole("region", { name: "MCP 配置" })).not.toBeInTheDocument();
   });
 
+  it("展示外部客户端并隐藏不适用的 MCP 身份操作", async () => {
+    listMyAgentsMock.mockResolvedValueOnce([externalAccess("codex_cli", "Codex CLI")]);
+    renderPage();
+
+    const row = await findRowByText("external:codex_cli:usr_user");
+    expect(within(row).getByText("Codex CLI")).toBeInTheDocument();
+    expect(within(row).getByText("外部客户端")).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /密钥详情/ })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /编辑/ })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /删除/ })).not.toBeInTheDocument();
+  });
+
   it("使用账户密钥和所选 Agent ID 生成双 Header MCP 配置", async () => {
     renderPage();
     const row = await findRowByText("agent_two");
@@ -180,6 +192,24 @@ function access(agentId: string, name: string) {
   return {
     account: { userId: "usr_user", email: "user@example.com", name: "销售张三" },
     agent: { agentId, clientId: `client_${agentId}`, actorId: "usr_user", status: "active", name }
+  };
+}
+
+function externalAccess(clientId: string, name: string) {
+  return {
+    account: { userId: "usr_user", email: "user@example.com", name: "销售张三" },
+    agent: {
+      agentId: `external:${clientId}:usr_user`,
+      clientId,
+      actorId: "usr_user",
+      status: "active",
+      name,
+      creationSource: "external",
+      external: true,
+      externalClientType: clientId,
+      activityRequestCount: 3,
+      lastActivityAt: "2026-11-24T08:00:00Z"
+    }
   };
 }
 

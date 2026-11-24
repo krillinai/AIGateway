@@ -275,7 +275,7 @@ func excludeDataMCPUpstreams(upstreams []mcpgateway.ToolCatalogUpstream, canRead
 	return out
 }
 
-func handleAgentList(accountSvc *accounts.Service, proxyGateway *mcpgateway.Service, collectorLookup AgentCollectorLookup) gin.HandlerFunc {
+func handleAgentList(accountSvc *accounts.Service, proxyGateway *mcpgateway.Service, collectorLookup AgentCollectorLookup, modelMode ModelAccessMode) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		account, ok := currentAccount(c)
 		if !ok {
@@ -318,7 +318,33 @@ func handleAgentList(accountSvc *accounts.Service, proxyGateway *mcpgateway.Serv
 			}
 			items = append(items, item)
 		}
+		for _, item := range externalAgentListItemsForUser(c.Request.Context(), Options{
+			AccountService: accountSvc, ProxyGateway: proxyGateway, ModelAccessMode: modelMode,
+		}, "", account.UserID) {
+			items = append(items, externalAgentAccessItem(account, item))
+		}
 		c.JSON(http.StatusOK, itemsResponse(items))
+	}
+}
+
+func externalAgentAccessItem(account accounts.Account, item gin.H) gin.H {
+	return gin.H{
+		"account": accountResponse(account, false),
+		"agent": gin.H{
+			"agent_id":               item["AgentID"],
+			"client_id":              item["ClientID"],
+			"name":                   item["Name"],
+			"tenant_id":              item["TenantID"],
+			"actor_id":               item["ActorID"],
+			"status":                 item["Status"],
+			"creation_source":        item["CreationSource"],
+			"created_at":             item["CreatedAt"],
+			"updated_at":             item["UpdatedAt"],
+			"external":               true,
+			"external_client_type":   item["ExternalClientType"],
+			"activity_request_count": item["ActivityRequestCount"],
+			"last_activity_at":       item["LastActivityAt"],
+		},
 	}
 }
 
@@ -668,7 +694,7 @@ func mountAgentRoutes(app *gin.RouterGroup, opts Options) {
 	if opts.AccountService == nil {
 		return
 	}
-	list := handleAgentList(opts.AccountService, opts.ProxyGateway, opts.AgentCollectorLookup)
+	list := handleAgentList(opts.AccountService, opts.ProxyGateway, opts.AgentCollectorLookup, opts.ModelAccessMode)
 	detail := handleAgentDetail(opts.AccountService, opts.ProxyGateway, opts.AgentCollectorLookup)
 	updateName := handleUpdateAgentName(opts.AccountService, opts.ProxyGateway, opts.AgentCollectorLookup)
 	remove := handleDeleteAgent(opts.AccountService, opts.ProxyGateway)

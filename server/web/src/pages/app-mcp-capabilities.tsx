@@ -12,7 +12,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { listMyAgents, listMyMCPCatalog, type AgentMCPUpstream } from "@/lib/agent-api";
+import { listMyAgents, listMyMCPCatalog, type AgentAccess, type AgentMCPUpstream } from "@/lib/agent-api";
+import { agentCreationSourceLabel } from "@/lib/agent-source";
 import { mcpStatusLabel } from "@/lib/mcp-admin-ui";
 
 export function AppMCPCapabilitiesPage() {
@@ -34,6 +35,7 @@ export function AppMCPCapabilitiesPage() {
       {agentsQuery.isError || catalogQuery.isError ? (
         <ErrorAlert error={[agentsQuery.error, catalogQuery.error]}>MCP 能力目录加载失败</ErrorAlert>
       ) : null}
+      {!agentsQuery.isLoading && !agentsQuery.isError && agents.length > 0 ? <AgentScope agents={agents} /> : null}
       {!agentsQuery.isLoading && !agentsQuery.isError && agents.length === 0 ? (
         <EmptyState title="暂无可用 Agent" />
       ) : null}
@@ -44,6 +46,44 @@ export function AppMCPCapabilitiesPage() {
         <UpstreamCatalog key={upstream.id} upstream={upstream} />
       ))}
     </PageShell>
+  );
+}
+
+function AgentScope({ agents }: { agents: AgentAccess[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>可使用的 Agent</CardTitle>
+        <CardDescription>当前账户下的 Agent 共用以下 MCP 授权，外部客户端按最近模型调用记录展示。</CardDescription>
+      </CardHeader>
+      <CardContent className="overflow-auto">
+        <DataTableShell dense embedded fixedLayout minWidth={680}>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Agent ID</TableHead>
+              <TableHead>名称</TableHead>
+              <TableHead>来源</TableHead>
+              <TableHead>状态</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {agents.map(({ agent }) => (
+              <TableRow key={agent.agentId}>
+                <TableCell className="break-all font-mono text-xs">{agent.agentId}</TableCell>
+                <TableCell>{agent.name || agent.clientId || "-"}</TableCell>
+                <TableCell>
+                  <div className="grid gap-1">
+                    <Badge variant="outline">{agentCreationSourceLabel(agent.creationSource)}</Badge>
+                    {agent.external && agent.activityRequestCount !== undefined ? <span className="text-xs text-muted-foreground">模型调用 {agent.activityRequestCount} 次</span> : null}
+                  </div>
+                </TableCell>
+                <TableCell><Badge variant={agent.status === "active" ? "success" : "muted"}>{mcpStatusLabel(agent.status)}</Badge></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </DataTableShell>
+      </CardContent>
+    </Card>
   );
 }
 

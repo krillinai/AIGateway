@@ -262,6 +262,10 @@ func agentListItem(ctx context.Context, accountSvc *accounts.Service, collectorL
 }
 
 func externalAgentListItems(ctx context.Context, opts Options, status string) []gin.H {
+	return externalAgentListItemsForUser(ctx, opts, status, "")
+}
+
+func externalAgentListItemsForUser(ctx context.Context, opts Options, status, userID string) []gin.H {
 	if modelAccessMode(opts) != ModelAccessPlatformManaged || opts.ProxyGateway == nil || opts.AccountService == nil {
 		return nil
 	}
@@ -279,6 +283,7 @@ func externalAgentListItems(ctx context.Context, opts Options, status string) []
 		mcpgateway.ModelActivityClientGeneric,
 	} {
 		overview, err := activityStore.ModelActivityOverview(ctx, mcpgateway.ModelActivityFilter{
+			UserID:     userID,
 			ClientType: clientType,
 			Start:      now.AddDate(0, 0, -30),
 			End:        now.Add(time.Second),
@@ -290,7 +295,7 @@ func externalAgentListItems(ctx context.Context, opts Options, status string) []
 			continue
 		}
 		for _, activity := range overview.Agents {
-			if activity.AgentID != "" || activity.UserID == "" || activity.LastRequestAt == nil {
+			if activity.AgentID != "" || activity.UserID == "" || activity.LastRequestAt == nil || (userID != "" && activity.UserID != userID) {
 				continue
 			}
 			account, err := opts.AccountService.Account(ctx, activity.UserID)

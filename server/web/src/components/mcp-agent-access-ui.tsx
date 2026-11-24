@@ -94,6 +94,12 @@ export function MCPAgentTokenTable({
                 <TableCell className="border-b border-border px-3 py-3">
                   <div className="grid gap-1">
                     <Badge className="w-fit whitespace-nowrap" variant="outline">{agentCreationSourceLabel(agent.creationSource)}</Badge>
+                    {agent.external ? (
+                      <>
+                        {agent.activityRequestCount !== undefined ? <span className="text-xs text-muted-foreground">模型调用 {agent.activityRequestCount} 次</span> : null}
+                        <span className="whitespace-nowrap text-xs text-muted-foreground">最近调用 {formatDateTime(agent.lastActivityAt)}</span>
+                      </>
+                    ) : null}
                     {agent.collector ? (
                       <>
                         <span className="break-all font-mono text-xs text-muted-foreground">{agent.collector.collectorId}</span>
@@ -118,19 +124,21 @@ export function MCPAgentTokenTable({
                 <TableCell className="border-b border-border px-3 py-3">
                   <TooltipProvider>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            aria-label={`查看 ${agent.name || agent.agentId} ${tokenActionLabel === "查看详情" ? "详情" : tokenActionLabel}`}
-                            onClick={() => onOpenToken(agent)}
-                            size="icon"
-                            variant="secondary"
-                          >
-                            <Eye aria-hidden="true" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{tokenActionLabel}</TooltipContent>
-                      </Tooltip>
+                      {!agent.external ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              aria-label={`查看 ${agent.name || agent.agentId} ${tokenActionLabel === "查看详情" ? "详情" : tokenActionLabel}`}
+                              onClick={() => onOpenToken(agent)}
+                              size="icon"
+                              variant="secondary"
+                            >
+                              <Eye aria-hidden="true" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{tokenActionLabel}</TooltipContent>
+                        </Tooltip>
+                      ) : null}
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button aria-label="查看授权" onClick={(event) => openGrantsFromButton(event, agent)} size="icon" variant="secondary">
@@ -139,7 +147,7 @@ export function MCPAgentTokenTable({
                         </TooltipTrigger>
                         <TooltipContent>查看授权</TooltipContent>
                       </Tooltip>
-                      {onEdit ? (
+                      {onEdit && !agent.external ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button aria-label={`编辑 ${agent.agentId} 名称`} onClick={() => onEdit(agent)} size="icon" variant="secondary">
@@ -149,7 +157,7 @@ export function MCPAgentTokenTable({
                           <TooltipContent>编辑名称</TooltipContent>
                         </Tooltip>
                       ) : null}
-                      {onDelete ? (
+                      {onDelete && !agent.external ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button aria-label={`删除 ${agent.agentId}`} onClick={() => onDelete(agent)} size="icon" variant="destructive">
@@ -240,7 +248,7 @@ export function MCPAgentTokenDrawer({
   const allowTokenSecrets = allowReveal || allowRotate;
   const isActive = tokenInfo?.tokenStatus === "active";
   const isCopyDisabled = !isActive || tokenPending || !tokenResult;
-  const mcpConfig = tokenResult && agent ? accountMCPConfig(tokenResult.token, agent.agentId) : undefined;
+  const mcpConfig = tokenResult && agent && !agent.external ? accountMCPConfig(tokenResult.token, agent.agentId) : undefined;
 
   return (
     <DetailDrawer contextLabel="账户级密钥" onClose={onClose} open={open} subtitle={agent?.agentId ?? "当前账户"} title="账户级密钥与接入配置">

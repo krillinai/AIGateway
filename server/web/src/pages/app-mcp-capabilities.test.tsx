@@ -24,7 +24,8 @@ describe("AppMCPCapabilitiesPage", () => {
     vi.clearAllMocks();
     listMyAgentsMock.mockResolvedValue([
       { account: { userId: "usr_1", email: "user@example.com", name: "用户" }, agent: { agentId: "agent-primary", clientId: "web", actorId: "usr_1", status: "active", name: "主 Agent" } },
-      { account: { userId: "usr_1", email: "user@example.com", name: "用户" }, agent: { agentId: "agent-secondary", clientId: "desktop", actorId: "usr_1", status: "active", name: "辅助 Agent" } }
+      { account: { userId: "usr_1", email: "user@example.com", name: "用户" }, agent: { agentId: "agent-secondary", clientId: "desktop", actorId: "usr_1", status: "active", name: "辅助 Agent" } },
+      { account: { userId: "usr_1", email: "user@example.com", name: "用户" }, agent: { agentId: "external:workbuddy:usr_1", clientId: "workbuddy", actorId: "usr_1", status: "active", name: "WorkBuddy", creationSource: "external", external: true, activityRequestCount: 5 } }
     ]);
     listMyMCPCatalogMock.mockResolvedValue({
       upstreams: [{
@@ -59,6 +60,9 @@ describe("AppMCPCapabilitiesPage", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "MCP 能力目录" })).toBeInTheDocument();
+    expect(await screen.findByText("可使用的 Agent")).toBeInTheDocument();
+    expect(screen.getByText("external:workbuddy:usr_1")).toBeInTheDocument();
+    expect(screen.getByText("外部客户端")).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "选择 Agent" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "CRM" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "CRM 图标" })).toHaveAttribute(

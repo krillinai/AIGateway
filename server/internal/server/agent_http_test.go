@@ -365,6 +365,57 @@ func TestAgentListReturnsCollectorCreationSourceAndDevice(t *testing.T) {
 	}
 }
 
+func TestAgentListIncludesExternalModelClientsForCurrentAccount(t *testing.T) {
+	ctx := context.Background()
+	accountSvc := newTestAccountService(accounts.NewMemoryStore())
+	owner, err := accountSvc.Register(ctx, accounts.RegisterRequest{Email: "external-agent-owner@example.com", Name: "External Agent Owner", Password: "passw0rd!"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := accountSvc.IssueTokens(ctx, owner.Account, []accounts.TokenRequest{{Audience: accounts.AudienceFrontend, ClientID: accounts.ClientWeb}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proxyStore := mcpgateway.NewMemoryStore()
+	now := time.Now().UTC()
+	for _, clientType := range []string{mcpgateway.ModelActivityClientCodex, mcpgateway.ModelActivityClientWorkBuddy} {
+		if err := proxyStore.CreateModelProxyAuditRecord(ctx, mcpgateway.ModelProxyAuditRecord{
+			AuditID:         "audit_" + clientType,
+			UserID:          owner.Account.UserID,
+			ClientType:      clientType,
+			Endpoint:        "/v1/responses",
+			Method:          "POST",
+			Status:          mcpgateway.ModelProxyAuditSucceeded,
+			CreatedAt:       now.Add(-time.Hour),
+			ActivityContent: &mcpgateway.ModelActivityContent{SchemaVersion: 1},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	router := server.NewRouter(server.Options{
+		AccountService:  accountSvc,
+		ProxyGateway:    testProxyGateway(proxyStore),
+		ModelAccessMode: server.ModelAccessPlatformManaged,
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/app/agents", nil)
+	request.AddCookie(&http.Cookie{Name: "claw_front_token", Value: tokens.Token(accounts.AudienceFrontend).Token})
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	body := recorder.Body.String()
+	for _, clientType := range []string{mcpgateway.ModelActivityClientCodex, mcpgateway.ModelActivityClientWorkBuddy} {
+		if !strings.Contains(body, `"agent_id":"external:`+clientType+`:`+owner.Account.UserID+`"`) ||
+			!strings.Contains(body, `"external":true`) ||
+			!strings.Contains(body, `"external_client_type":"`+clientType+`"`) {
+			t.Fatalf("external %s response = %s", clientType, body)
+		}
+	}
+}
+
 func TestClaweeAgentRoutesUseOnlyBoundAgent(t *testing.T) {
 	ctx := context.Background()
 	accountSvc := newTestAccountService(accounts.NewMemoryStore())

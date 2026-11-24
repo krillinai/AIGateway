@@ -11,6 +11,10 @@ export type AgentAccess = {
     name?: string;
     creationSource?: string;
     collector?: AgentCollectorInfo;
+    external?: boolean;
+    externalClientType?: string;
+    activityRequestCount?: number;
+    lastActivityAt?: string;
     updatedAt?: string;
   };
 };
@@ -117,6 +121,17 @@ type AgentAccessResponse = {
     creation_source?: string;
     CreationSource?: string;
     creationSource?: string;
+    external?: boolean;
+    External?: boolean;
+    external_client_type?: string;
+    ExternalClientType?: string;
+    externalClientType?: string;
+    activity_request_count?: number;
+    ActivityRequestCount?: number;
+    activityRequestCount?: number;
+    last_activity_at?: string;
+    LastActivityAt?: string;
+    lastActivityAt?: string;
     collector?: AgentCollectorInfoResponse;
     Collector?: AgentCollectorInfoResponse;
     updated_at?: string;
@@ -258,6 +273,10 @@ function mapAgentAccess(response: AgentAccessResponse): AgentAccess {
       status: response.agent.status ?? response.agent.Status ?? "",
       creationSource: response.agent.creation_source ?? response.agent.creationSource ?? response.agent.CreationSource ?? "",
       collector: collector ? mapAgentCollectorInfo(collector) : undefined,
+      external: response.agent.external ?? response.agent.External ?? false,
+      externalClientType: response.agent.external_client_type ?? response.agent.externalClientType ?? response.agent.ExternalClientType,
+      activityRequestCount: response.agent.activity_request_count ?? response.agent.activityRequestCount ?? response.agent.ActivityRequestCount,
+      lastActivityAt: response.agent.last_activity_at ?? response.agent.lastActivityAt ?? response.agent.LastActivityAt,
       updatedAt: response.agent.updated_at ?? response.agent.updatedAt ?? response.agent.UpdatedAt
     }
   };
