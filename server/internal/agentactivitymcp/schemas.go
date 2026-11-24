@@ -181,6 +181,7 @@ func outputSchemas() map[string]mcpgateway.JSONMap {
 			},
 		},
 	}
+	summaryProperties["incomplete_usage_requests"] = mcpgateway.JSONMap{"type": "integer", "minimum": 0}
 	agentsProperties := queryProperties()
 	agentsProperties["source_status"] = sourceStatusSchema
 	agentsProperties["sort_by"] = mcpgateway.JSONMap{"type": "string", "enum": []any{"turn_count", "session_count", "last_activity_at"}}

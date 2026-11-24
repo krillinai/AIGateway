@@ -24,6 +24,14 @@ func (mcpUsageStoreStub) MCPUsage(context.Context, time.Time, time.Time) ([]acti
 	return []activity.MCPUsage{}, nil
 }
 
+type snapshotClientStub struct {
+	snapshot activity.Snapshot
+}
+
+func (s snapshotClientStub) Snapshot(context.Context, activity.SnapshotRequest) (activity.Snapshot, error) {
+	return s.snapshot, nil
+}
+
 type summaryReaderStub struct {
 	agentID string
 	options activity.AgentDetailOptions
@@ -274,6 +282,42 @@ func TestClientResponsesMatchOutputSchemas(t *testing.T) {
 				t.Fatalf("response does not match output schema: %v\nresponse = %#v", err, result.StructuredContent)
 			}
 		})
+	}
+}
+
+func TestClientSummaryAllowsIncompleteUsageRequests(t *testing.T) {
+	access := dataaccess.NewService(dataaccess.NewMemoryStore())
+	if _, err := access.Create(context.Background(), dataaccess.SetInput{UserID: "user-1", ResourceType: dataaccess.ResourceDataView, ResourceID: dataaccess.ViewAgentActivity, Actions: []string{dataaccess.ActionRead}, CreatedBy: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	service, err := activity.NewService(snapshotClientStub{snapshot: activity.Snapshot{
+		GeneratedAt:             time.Now().UTC(),
+		Trend:                   []activity.TrendPoint{},
+		Models:                  []activity.ModelUsage{},
+		TokenUsageRanking:       []activity.TokenUsageRank{},
+		IncompleteUsageRequests: 2,
+	}}, activityStoreStub{}, mcpUsageStoreStub{}, "Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClient(service, nil, access)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.CallTool(context.Background(), mcpgateway.UpstreamCallRequest{
+		Capability: mcpgateway.Capability{UpstreamName: ToolSummary},
+		Caller:     mcpgateway.AgentIdentity{UserID: "user-1"},
+		Arguments:  mcpgateway.JSONMap{"range": "7d"},
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+	body := result.StructuredContent.(mcpgateway.JSONMap)
+	if body["incomplete_usage_requests"] != float64(2) {
+		t.Fatalf("incomplete usage count = %#v", body["incomplete_usage_requests"])
+	}
+	if err := mcpgateway.ValidateInput(outputSchemas()[ToolSummary], body); err != nil {
+		t.Fatalf("summary response does not match output schema: %v\nresponse = %#v", err, body)
 	}
 }
 
