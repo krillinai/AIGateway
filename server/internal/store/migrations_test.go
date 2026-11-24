@@ -1061,6 +1061,28 @@ func TestModelActivityClientMetadataMigrationAddsCorrelationSources(t *testing.T
 	}
 }
 
+func TestModelActivitySchemaRepairMigrationReconcilesDivergentHistory(t *testing.T) {
+	raw, err := os.ReadFile("../../db/migrations/00104_repair_model_activity_schema.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	migration := strings.ToLower(string(raw))
+	for _, fragment := range []string{
+		"add column if not exists agent_id text not null default ''",
+		"add column if not exists session_id text not null default ''",
+		"add column if not exists turn_id text not null default ''",
+		"add column if not exists activity_content jsonb",
+		"add column if not exists client_type text not null default 'unknown'",
+		"add column if not exists session_source text not null default ''",
+		"add column if not exists turn_source text not null default ''",
+		"create index if not exists model_proxy_activity_created_idx",
+	} {
+		if !strings.Contains(migration, fragment) {
+			t.Fatalf("migration missing %q", fragment)
+		}
+	}
+}
+
 func TestModelAPIKeyCiphertextMigrationAddsEncryptedSecret(t *testing.T) {
 	raw, err := os.ReadFile("../../db/migrations/00084_model_api_key_ciphertext.sql")
 	if err != nil {
