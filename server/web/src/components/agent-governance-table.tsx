@@ -169,13 +169,13 @@ export function AgentGovernanceTable({
                       {mcp ? (
                         <>
                           {canOpenToken && mcp.boundUserId ? <Button
-                            aria-label={`查看 ${row.displayName} 令牌详情`}
+                            aria-label={`查看 ${row.displayName} 密钥详情`}
                             onClick={(event) => stopAndRun(event, () => onOpenToken(mcp))}
                             size="sm"
                             variant="secondary"
                           >
                             <KeyRound aria-hidden="true" />
-                            令牌详情
+                            密钥详情
                           </Button> : null}
                           {canReadGrants && mcp.boundUserId ? <Button onClick={(event) => stopAndRun(event, () => onOpenGrants(mcp))} size="sm" variant="secondary">
                             查看授权

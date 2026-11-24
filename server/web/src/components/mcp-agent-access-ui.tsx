@@ -46,7 +46,7 @@ export function MCPAgentTokenTable({
   onOpenGrants: (agent: MCPAgent) => void;
   onEdit?: (agent: MCPAgent) => void;
   onDelete?: (agent: MCPAgent) => void;
-  tokenActionLabel: "查看详情" | "令牌详情";
+  tokenActionLabel: "查看详情" | "密钥详情";
   onAddGrant?: (agent: MCPAgent) => void;
 }) {
   function openGrantsFromButton(event: MouseEvent<HTMLButtonElement>, agent: MCPAgent) {
@@ -243,7 +243,7 @@ export function MCPAgentTokenDrawer({
   const mcpConfig = tokenResult && agent ? accountMCPConfig(tokenResult.token, agent.agentId) : undefined;
 
   return (
-    <DetailDrawer contextLabel="账户级 Token" onClose={onClose} open={open} subtitle={agent?.agentId ?? "当前账户"} title="账户级 Token 与接入配置">
+    <DetailDrawer contextLabel="账户级密钥" onClose={onClose} open={open} subtitle={agent?.agentId ?? "当前账户"} title="账户级密钥与接入配置">
       <KeyValueList
         items={[
           ...(agent ? [
@@ -273,14 +273,14 @@ export function MCPAgentTokenDrawer({
         {allowReveal && onRevealToken && isActive && !tokenResult ? (
           <Button disabled={tokenPending} onClick={() => onRevealToken(agent)} variant="secondary">
             <Eye aria-hidden="true" />
-            显示令牌
+            显示密钥
           </Button>
         ) : null}
         {allowRotate ? <Button disabled={tokenPending} onClick={() => onRotateToken(agent)} variant="primary">
           <RotateCw className="mr-2 h-4 w-4" aria-hidden="true" />
-          {tokenInfo ? "轮换访问令牌" : "生成访问令牌"}
+          {tokenInfo ? "轮换访问密钥" : "生成访问密钥"}
         </Button> : null}
-        {allowRevoke ? <Button disabled={tokenPending || !isActive} onClick={() => onRevokeToken(agent)} size="sm" variant="destructive">吊销访问令牌</Button> : null}
+        {allowRevoke ? <Button disabled={tokenPending || !isActive} onClick={() => onRevokeToken(agent)} size="sm" variant="destructive">吊销访问密钥</Button> : null}
       </div> : null}
       {tokenError ? <ErrorAlert>{tokenError}</ErrorAlert> : null}
       {allowTokenSecrets ? <ResourceList>
@@ -291,7 +291,7 @@ export function MCPAgentTokenDrawer({
         />
         <TokenSecretPane
           disabled={isCopyDisabled}
-          title="Token"
+          title="密钥"
           value={tokenResult?.token}
         />
         {tokenResult?.authorizationHeader ? (

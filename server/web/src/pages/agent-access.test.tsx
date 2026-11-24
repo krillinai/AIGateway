@@ -101,10 +101,10 @@ describe("AgentAccessPage", () => {
     deleteMyAgentMock.mockResolvedValue(undefined);
   });
 
-  it("只展示一份账户 Token，并只请求一次账户 Catalog", async () => {
+  it("只展示一份账户密钥，并只请求一次账户 Catalog", async () => {
     renderPage();
 
-    expect(await screen.findByText("平台接入 Token")).toBeInTheDocument();
+    expect(await screen.findByText("平台接入密钥")).toBeInTheDocument();
     expect(await screen.findAllByText("fp_1234")).toHaveLength(1);
     expect(await screen.findByText("agent_one")).toBeInTheDocument();
     expect(await screen.findByText("agent_two")).toBeInTheDocument();
@@ -112,27 +112,27 @@ describe("AgentAccessPage", () => {
     expect(listMyMCPCatalogMock).toHaveBeenCalledTimes(1);
   });
 
-  it("没有 Agent 时仍可查看账户 Token，并显示正常空列表", async () => {
+  it("没有 Agent 时仍可查看账户密钥，并显示正常空列表", async () => {
     listMyAgentsMock.mockResolvedValueOnce([]);
     listMyMCPCatalogMock.mockResolvedValueOnce({ upstreams: [] });
     renderPage();
 
     expect(await screen.findByText("暂无匹配的智能体。")).toBeInTheDocument();
     expect(screen.queryByText("加载智能体接入信息失败")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "查看 Token" }));
-    expect(await screen.findByRole("heading", { name: "账户级 Token 与接入配置" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看密钥" }));
+    expect(await screen.findByRole("heading", { name: "账户级密钥与接入配置" })).toBeInTheDocument();
     await waitFor(() => expect(revealMyAccountTokenMock).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole("region", { name: "Token" })).toHaveTextContent("sk-account-secret");
+    expect(await screen.findByRole("region", { name: "密钥" })).toHaveTextContent("sk-account-secret");
     expect(screen.queryByRole("region", { name: "MCP 配置" })).not.toBeInTheDocument();
   });
 
-  it("使用账户 Token 和所选 Agent ID 生成双 Header MCP 配置", async () => {
+  it("使用账户密钥和所选 Agent ID 生成双 Header MCP 配置", async () => {
     renderPage();
     const row = await findRowByText("agent_two");
 
-    fireEvent.click(within(row).getByRole("button", { name: "查看 辅助 Agent 令牌详情" }));
+    fireEvent.click(within(row).getByRole("button", { name: "查看 辅助 Agent 密钥详情" }));
 
-    expect(await screen.findByRole("heading", { name: "账户级 Token 与接入配置" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "账户级密钥与接入配置" })).toBeInTheDocument();
     await waitFor(() => expect(revealMyAccountTokenMock).toHaveBeenCalledTimes(1));
     const config = await screen.findByRole("region", { name: "MCP 配置" });
     expect(config).toHaveTextContent("Authorization");
@@ -141,12 +141,12 @@ describe("AgentAccessPage", () => {
     expect(config).toHaveTextContent("agent_two");
   });
 
-  it("删除 Agent 时明确保留账户 Token 和账户授权", async () => {
+  it("删除 Agent 时明确保留账户密钥和账户授权", async () => {
     renderPage();
     const row = await findRowByText("agent_one");
     fireEvent.click(within(row).getByRole("button", { name: "删除 agent_one" }));
 
-    expect(await screen.findByText(/账户 Token、账户授权和历史审计记录不受影响/)).toBeInTheDocument();
+    expect(await screen.findByText(/账户密钥、账户授权和历史审计记录不受影响/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认删除智能体" }));
     await waitFor(() => expect(deleteMyAgentMock).toHaveBeenCalledWith("agent_one"));
   });

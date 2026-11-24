@@ -242,7 +242,7 @@ describe("MCPAgentsGrantsPage", () => {
     renderPage(undefined, "/admin/mcp/agents/detail?agent_id=agent_sales");
 
     const drawer = await screen.findByRole("dialog");
-    expect(within(drawer).getByRole("heading", { name: "账户级 Token 与接入配置" })).toBeInTheDocument();
+    expect(within(drawer).getByRole("heading", { name: "账户级密钥与接入配置" })).toBeInTheDocument();
     expect(within(drawer).getAllByText("agent_sales")).not.toHaveLength(0);
   });
 
@@ -255,13 +255,13 @@ describe("MCPAgentsGrantsPage", () => {
     expect(document.body).not.toHaveTextContent(plaintextListToken);
   });
 
-  it("迁移 Agent 时不迁移账户 Token 和账户授权", async () => {
+  it("迁移 Agent 时不迁移账户密钥和账户授权", async () => {
     renderPage();
 
     const row = await findRowByText("agent_sales");
     fireEvent.click(within(row).getByRole("button", { name: "迁移" }));
     const dialog = await screen.findByRole("dialog", { name: "迁移 Agent" });
-    expect(within(dialog).getByText(/账户 Token 和账户授权不迁移/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/账户密钥和账户授权不迁移/)).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("迁移原因"), { target: { value: "重复账号" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认迁移" }));
 
@@ -472,7 +472,7 @@ describe("MCPAgentsGrantsPage", () => {
     expect(within(row).queryByText("agent_sales_gKvG********EQoqo")).not.toBeInTheDocument();
     expect(within(row).queryByText(/指纹/)).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "筛选令牌状态" })).not.toBeInTheDocument();
-    expect(within(row).queryByRole("button", { name: "Token" })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "密钥" })).not.toBeInTheDocument();
     expect(within(row).getByRole("button", { name: "查看授权" })).toBeInTheDocument();
     expect(within(row).queryByRole("button", { name: "添加授权" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Selected Agent Grants" })).not.toBeInTheDocument();
@@ -485,25 +485,25 @@ describe("MCPAgentsGrantsPage", () => {
 
     const row = await findRowByText("agent_sales");
     fireEvent.click(within(row).getByText("agent_sales"));
-    expect(screen.queryByRole("heading", { name: "账户级 Token 与接入配置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "账户级密钥与接入配置" })).not.toBeInTheDocument();
 
-    fireEvent.click(within(row).getByRole("button", { name: "查看 Sales Assistant 令牌详情" }));
-    expect(await screen.findByRole("heading", { name: "账户级 Token 与接入配置" })).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "查看 Sales Assistant 密钥详情" }));
+    expect(await screen.findByRole("heading", { name: "账户级密钥与接入配置" })).toBeInTheDocument();
     expect(screen.queryByText("masked_token")).not.toBeInTheDocument();
     expect(screen.getByText("token_status")).toBeInTheDocument();
     expect(revealMCPAccountTokenMock).not.toHaveBeenCalled();
 
-    fireEvent.click(await screen.findByRole("button", { name: "显示令牌" }));
+    fireEvent.click(await screen.findByRole("button", { name: "显示密钥" }));
 
     await waitFor(() => {
       expect(revealMCPAccountTokenMock).toHaveBeenCalledWith("usr_1");
     });
     expect(await screen.findByText("agent_sales_plaintext_copy")).toBeInTheDocument();
     expect(await screen.findByText("Authorization: Bearer agent_sales_plaintext_copy")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Token" })).getByRole("button", { name: "复制" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "密钥" })).getByRole("button", { name: "复制" })).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "授权请求头" })).getByRole("button", { name: "复制" })).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "MCP 配置" })).getByRole("button", { name: "复制" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "复制原始 Token" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复制原始密钥" })).not.toBeInTheDocument();
   });
 
   it("opens grants in a drawer and keeps grant mutation controls inside that drawer", async () => {
@@ -562,7 +562,7 @@ describe("MCPAgentsGrantsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交创建" }));
 
     await waitFor(() => expect(createMCPAgentMock).toHaveBeenCalled());
-    expect(screen.queryByRole("heading", { name: "账户级 Token 与接入配置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "账户级密钥与接入配置" })).not.toBeInTheDocument();
     expect(rotateMCPAccountTokenMock).not.toHaveBeenCalled();
     expect(revealMCPAccountTokenMock).not.toHaveBeenCalled();
   });
@@ -571,8 +571,8 @@ describe("MCPAgentsGrantsPage", () => {
     renderPage();
 
     await openTokenDrawer("agent_sales");
-    fireEvent.click(screen.getByRole("button", { name: "显示令牌" }));
-    const tokenPane = await screen.findByRole("region", { name: "Token" });
+    fireEvent.click(screen.getByRole("button", { name: "显示密钥" }));
+    const tokenPane = await screen.findByRole("region", { name: "密钥" });
     fireEvent.click(within(tokenPane).getByRole("button", { name: "复制" }));
 
     expect(await screen.findByText(`Authorization: Bearer ${copiedToken}`)).toBeInTheDocument();
@@ -586,9 +586,9 @@ describe("MCPAgentsGrantsPage", () => {
     renderPage();
 
     await openTokenDrawer("agent_sales");
-    fireEvent.click(screen.getByRole("button", { name: "显示令牌" }));
+    fireEvent.click(screen.getByRole("button", { name: "显示密钥" }));
 
-    expect(await screen.findByText("当前账户尚未生成访问令牌。请点击“生成访问令牌”。")).toBeInTheDocument();
+    expect(await screen.findByText("当前账户尚未生成访问密钥。请点击“生成访问密钥”。")).toBeInTheDocument();
     expect(screen.queryByText("account token not found")).not.toBeInTheDocument();
   });
 
@@ -596,7 +596,7 @@ describe("MCPAgentsGrantsPage", () => {
     renderPage();
 
     await openTokenDrawer("agent_sales");
-    fireEvent.click(screen.getByRole("button", { name: "显示令牌" }));
+    fireEvent.click(screen.getByRole("button", { name: "显示密钥" }));
     const headerPane = await screen.findByRole("region", { name: "授权请求头" });
     fireEvent.click(within(headerPane).getByRole("button", { name: "复制" }));
     expect(await screen.findByText(`Authorization: Bearer ${copiedToken}`)).toBeInTheDocument();
@@ -620,7 +620,7 @@ describe("MCPAgentsGrantsPage", () => {
 
     await openTokenDrawer("agent_revoked");
     expect(revealMCPAccountTokenMock).not.toHaveBeenCalled();
-    expect(within(screen.getByRole("region", { name: "Token" })).getByRole("button", { name: "复制" })).toBeDisabled();
+    expect(within(screen.getByRole("region", { name: "密钥" })).getByRole("button", { name: "复制" })).toBeDisabled();
   });
 
   it("does not show a stale create agent error after closing and reopening the create modal", async () => {
@@ -644,12 +644,12 @@ describe("MCPAgentsGrantsPage", () => {
     renderPage();
 
     await openTokenDrawer("agent_sales");
-    fireEvent.click(screen.getByRole("button", { name: "轮换访问令牌" }));
-    fireEvent.click(await screen.findByRole("button", { name: "确认轮换访问令牌" }));
+    fireEvent.click(screen.getByRole("button", { name: "轮换访问密钥" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认轮换访问密钥" }));
 
     expect(await within(screen.getByRole("dialog", { name: "确认" })).findByText(/rotate failed once/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
-    fireEvent.click(screen.getByRole("button", { name: "吊销访问令牌" }));
+    fireEvent.click(screen.getByRole("button", { name: "吊销访问密钥" }));
 
     expect(screen.queryByText("rotate failed once")).not.toBeInTheDocument();
   });
@@ -771,7 +771,7 @@ describe("MCPAgentsGrantsPage", () => {
     renderPage();
 
     await openTokenDrawer("agent_sales");
-    fireEvent.click(screen.getByRole("button", { name: "吊销访问令牌" }));
+    fireEvent.click(screen.getByRole("button", { name: "吊销访问密钥" }));
 
     expect(await screen.findByText("吊销后该账户下所有 Agent 都将无法访问 MCP Gateway。")).toBeInTheDocument();
   });
@@ -974,8 +974,8 @@ async function openGrantsDrawer(agentId: string) {
 
 async function openTokenDrawer(agentId: string) {
   const row = await findRowByText(agentId);
-  fireEvent.click(within(row).getByRole("button", { name: "查看 Sales Assistant 令牌详情" }));
-  await screen.findByRole("heading", { name: "账户级 Token 与接入配置" });
+  fireEvent.click(within(row).getByRole("button", { name: "查看 Sales Assistant 密钥详情" }));
+  await screen.findByRole("heading", { name: "账户级密钥与接入配置" });
   await waitFor(() => expect(getMCPAccountTokenMock).toHaveBeenCalledWith("usr_1"));
 }
 

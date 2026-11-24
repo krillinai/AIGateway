@@ -120,11 +120,11 @@ export function AgentAccessPage() {
 
   return (
     <>
-      <PageHeader title="我的 Agent 接入">当前账户的所有 active Agent 共用一份平台接入 Token；Token 同时用于模型 API 和 MCP，每个 Agent 使用自己的调用身份。</PageHeader>
+      <PageHeader title="我的 Agent 接入">当前账户的所有 active Agent 共用一份平台接入密钥；密钥同时用于模型 API 和 MCP，每个 Agent 使用自己的调用身份。</PageHeader>
 
       <Card>
         <CardHeader className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-          <div><CardTitle>平台接入 Token</CardTitle><p className="mt-1 text-sm text-muted-foreground">Token 属于当前账户，同时用于模型 API 和 MCP；轮换或吊销后会同时影响账户下所有 Agent。</p></div>
+          <div><CardTitle>平台接入密钥</CardTitle><p className="mt-1 text-sm text-muted-foreground">密钥属于当前账户，同时用于模型 API 和 MCP；轮换或吊销后会同时影响账户下所有 Agent。</p></div>
           <Badge variant={mcpStatusVariant(tokenInfo?.tokenStatus ?? "missing")}>{tokenInfo ? mcpStatusLabel(tokenInfo.tokenStatus) : "未生成"}</Badge>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -137,11 +137,11 @@ export function AgentAccessPage() {
             <TokenMetadata label="mcp_endpoint" value={`${window.location.origin}/mcp`} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={!tokenInfo || tokenInfo.tokenStatus !== "active" || tokenPending} onClick={() => openToken(selectedAgent)} variant="secondary"><Eye aria-hidden="true" />查看 Token</Button>
-            <Button disabled={tokenPending} onClick={() => rotateMutation.mutate()} variant="primary"><RotateCw aria-hidden="true" />{tokenInfo?.tokenStatus === "active" ? "轮换 Token" : "生成 Token"}</Button>
-            <Button disabled={!tokenInfo || tokenInfo.tokenStatus !== "active" || tokenPending} onClick={() => revokeMutation.mutate()} variant="destructive"><ShieldOff aria-hidden="true" />吊销 Token</Button>
+            <Button disabled={!tokenInfo || tokenInfo.tokenStatus !== "active" || tokenPending} onClick={() => openToken(selectedAgent)} variant="secondary"><Eye aria-hidden="true" />查看密钥</Button>
+            <Button disabled={tokenPending} onClick={() => rotateMutation.mutate()} variant="primary"><RotateCw aria-hidden="true" />{tokenInfo?.tokenStatus === "active" ? "轮换密钥" : "生成密钥"}</Button>
+            <Button disabled={!tokenInfo || tokenInfo.tokenStatus !== "active" || tokenPending} onClick={() => revokeMutation.mutate()} variant="destructive"><ShieldOff aria-hidden="true" />吊销密钥</Button>
           </div>
-          {tokenQuery.isError && !tokenInfo ? <p className="text-sm text-muted-foreground">当前账户尚未生成平台接入 Token。</p> : null}
+          {tokenQuery.isError && !tokenInfo ? <p className="text-sm text-muted-foreground">当前账户尚未生成平台接入密钥。</p> : null}
           {tokenError ? <ErrorAlert>{tokenError}</ErrorAlert> : null}
         </CardContent>
       </Card>
@@ -158,7 +158,7 @@ export function AgentAccessPage() {
             onEdit={(agent) => { updateNameMutation.reset(); setEditingAgent(agent); setEditingName(agent.name); }}
             onOpenGrants={(agent) => { setSelectedAgentId(agent.agentId); setDrawer("grants"); }}
             onOpenToken={openToken}
-            tokenActionLabel="令牌详情"
+            tokenActionLabel="密钥详情"
           />
         </CardContent>
       </Card>
@@ -195,7 +195,7 @@ export function AgentAccessPage() {
 
       <ConfirmDialog
         confirmLabel={deleteMutation.isPending ? "删除中..." : "确认删除智能体"}
-        description="删除后，该智能体的账号绑定、登录会话和专属运行数据将失效；账户 Token、账户授权和历史审计记录不受影响。此操作无法撤销。"
+        description="删除后，该智能体的账号绑定、登录会话和专属运行数据将失效；账户密钥、账户授权和历史审计记录不受影响。此操作无法撤销。"
         error={deleteMutation.isError ? deleteMutation.error.message : undefined}
         onClose={() => { if (!deleteMutation.isPending) { setDeletingAgent(null); deleteMutation.reset(); } }}
         onConfirm={() => deletingAgent && deleteMutation.mutate(deletingAgent)}
@@ -214,9 +214,9 @@ function TokenMetadata({ label, value }: { label: string; value: string }) {
 
 function accountTokenErrorMessage(error: unknown) {
   if (error instanceof APIError && error.code === "username_required") {
-    return "请先设置账户用户名，再生成平台接入 Token。";
+    return "请先设置账户用户名，再生成平台接入密钥。";
   }
-  return error instanceof Error ? error.message : "账户 Token 操作失败，请稍后重试。";
+  return error instanceof Error ? error.message : "账户密钥操作失败，请稍后重试。";
 }
 
 function mapUserAgent(access: AgentAccess): MCPAgent {

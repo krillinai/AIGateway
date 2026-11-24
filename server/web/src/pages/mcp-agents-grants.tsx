@@ -85,10 +85,10 @@ const officeAgentsQueryKey = ["office-agent-activity"] as const;
 const agentStatusOptions = ["all", "active", "disabled", "inactive", "revoked"] as const;
 const grantTypeOptions = ["tool", "resource", "prompt"] as const;
 const revokeConfirmText = "吊销后该账户下所有 Agent 都将无法访问 MCP Gateway。";
-const rotateConfirmText = "轮换后该账户的旧访问令牌将失效，所有 Agent 的 MCP 配置都需要更新。";
+const rotateConfirmText = "轮换后该账户的旧访问密钥将失效，所有 Agent 的 MCP 配置都需要更新。";
 const deleteGrantConfirmText = "删除后同账户所有 Agent 都将失去该工具权限。";
 const deleteRoleGrantConfirmText = "删除后该角色下的账户将失去对应的 MCP 权限。";
-const deleteAgentConfirmText = "将删除该 MCP 身份的账号绑定和登录会话；账户 Token 与账户授权保持不变。采集器上报的运行实例不会删除，操作后将显示为“未绑定 MCP 身份”。此操作无法撤销。";
+const deleteAgentConfirmText = "将删除该 MCP 身份的账号绑定和登录会话；账户密钥与账户授权保持不变。采集器上报的运行实例不会删除，操作后将显示为“未绑定 MCP 身份”。此操作无法撤销。";
 const deleteOfficeAgentConfirmText = "将清理该运行实例及其会话、轮次、活动和工具调用数据；若采集器后续再次上报，该实例会重新出现。此操作无法撤销。";
 type CreateAgentForm = {
   userId: string;
@@ -592,7 +592,7 @@ export function MCPAgentsGrantsPage() {
         <CardHeader className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
             <CardTitle>智能体列表</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">点击列表行查看访问令牌；操作区可查看授权。</p>
+            <p className="mt-1 text-xs text-muted-foreground">点击列表行查看访问密钥；操作区可查看授权。</p>
           </div>
           <Badge variant="muted">{filteredRows.length} 条可见</Badge>
         </CardHeader>
@@ -774,7 +774,7 @@ export function MCPAgentsGrantsPage() {
             <Field>
               <FieldLabel htmlFor="agent-transfer-reason">迁移原因</FieldLabel>
               <Input id="agent-transfer-reason" maxLength={500} required value={transferReason} onChange={(event) => setTransferReason(event.target.value)} />
-              <FieldDescription>账户 Token 和账户授权不迁移；Agent 将立即使用目标账户的 Token 与授权。</FieldDescription>
+              <FieldDescription>账户密钥和账户授权不迁移；Agent 将立即使用目标账户的密钥与授权。</FieldDescription>
             </Field>
             {transferAgentMutation.isError ? <ErrorBlock>{transferAgentMutation.error.message}</ErrorBlock> : null}
             <Field className="justify-end" orientation="horizontal">
@@ -1322,9 +1322,9 @@ function ConfirmModal({
               : "";
   const buttonLabel =
     confirmState?.kind === "rotate"
-      ? "确认轮换访问令牌"
+      ? "确认轮换访问密钥"
       : confirmState?.kind === "revoke"
-        ? "确认吊销访问令牌"
+        ? "确认吊销访问密钥"
         : confirmState?.kind === "deleteAgent"
           ? "确认删除 MCP 身份"
           : confirmState?.kind === "deleteOfficeAgent"
@@ -1402,7 +1402,7 @@ function mcpAgentOwnerLabel(agent: MCPAgent): string {
 
 function agentTokenCopyErrorMessage(error: Error) {
   if (error.message === "account token not found") {
-    return "当前账户尚未生成访问令牌。请点击“生成访问令牌”。";
+    return "当前账户尚未生成访问密钥。请点击“生成访问密钥”。";
   }
   return error.message;
 }
