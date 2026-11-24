@@ -14,3 +14,7 @@ export function agentCreationSourceLabel(source?: string): string {
       return "未知";
   }
 }
+
+export function agentDisplayId(agent: { agentId: string; clientId?: string; external?: boolean; externalClientType?: string }): string {
+  return agent.external ? agent.externalClientType || agent.clientId || "外部客户端" : agent.agentId;
+}

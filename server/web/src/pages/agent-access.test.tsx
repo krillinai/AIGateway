@@ -130,7 +130,7 @@ describe("AgentAccessPage", () => {
     listMyAgentsMock.mockResolvedValueOnce([externalAccess("codex_cli", "Codex CLI")]);
     renderPage();
 
-    const row = await findRowByText("external:codex_cli:usr_user");
+    const row = await findRowByText("codex_cli");
     expect(within(row).getByText("Codex CLI")).toBeInTheDocument();
     expect(within(row).getByText("外部客户端")).toBeInTheDocument();
     expect(within(row).queryByRole("button", { name: /密钥详情/ })).not.toBeInTheDocument();

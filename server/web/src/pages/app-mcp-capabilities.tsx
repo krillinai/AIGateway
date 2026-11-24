@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listMyAgents, listMyMCPCatalog, type AgentAccess, type AgentMCPUpstream } from "@/lib/agent-api";
-import { agentCreationSourceLabel } from "@/lib/agent-source";
+import { agentCreationSourceLabel, agentDisplayId } from "@/lib/agent-source";
 import { mcpStatusLabel } from "@/lib/mcp-admin-ui";
 
 export function AppMCPCapabilitiesPage() {
@@ -69,7 +69,7 @@ function AgentScope({ agents }: { agents: AgentAccess[] }) {
           <TableBody>
             {agents.map(({ agent }) => (
               <TableRow key={agent.agentId}>
-                <TableCell className="break-all font-mono text-xs">{agent.agentId}</TableCell>
+                <TableCell className="break-all font-mono text-xs">{agentDisplayId(agent)}</TableCell>
                 <TableCell>{agent.name || agent.clientId || "-"}</TableCell>
                 <TableCell>
                   <div className="grid gap-1">

@@ -22,7 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { MCPAccountTokenInfo, MCPAccountTokenResponse, MCPAgent, MCPGrant, MCPCapability, MCPUpstreamServer } from "@/lib/mcp-admin-api";
-import { agentCreationSourceLabel } from "@/lib/agent-source";
+import { agentCreationSourceLabel, agentDisplayId } from "@/lib/agent-source";
 import { formatDateTime, isDataAuthorizedTool, mcpStatusLabel, mcpStatusVariant } from "@/lib/mcp-admin-ui";
 import { trimInput } from "@/lib/text";
 
@@ -83,7 +83,7 @@ export function MCPAgentTokenTable({
         {!isLoading
           ? agents.map((agent) => (
               <TableRow key={agent.agentId}>
-                <TableCell className="break-all border-b border-border px-3 py-3 font-mono text-xs leading-5">{agent.agentId}</TableCell>
+                <TableCell className="break-all border-b border-border px-3 py-3 font-mono text-xs leading-5">{agentDisplayId(agent)}</TableCell>
                 <TableCell className="border-b border-border px-3 py-3">
                   <div className="grid gap-1">
                     <strong className="break-words text-sm font-semibold">{agent.boundUserName || "-"}</strong>

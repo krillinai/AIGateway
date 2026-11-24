@@ -61,7 +61,7 @@ describe("AppMCPCapabilitiesPage", () => {
 
     expect(await screen.findByRole("heading", { name: "MCP 能力目录" })).toBeInTheDocument();
     expect(await screen.findByText("可使用的 Agent")).toBeInTheDocument();
-    expect(screen.getByText("external:workbuddy:usr_1")).toBeInTheDocument();
+    expect(screen.getByText("workbuddy")).toBeInTheDocument();
     expect(screen.getByText("外部客户端")).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "选择 Agent" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "CRM" })).toBeInTheDocument();
