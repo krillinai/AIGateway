@@ -330,7 +330,6 @@ Before deploying to production, review the security and operations documentation
 
 ## Documentation
 
-- [AI Gateway 用户与管理员指南（中文图文）](./docs/delivery/user-guides/AIGateway用户与管理员指南.md) · [ClaweeAgent 用户指南（中文）](https://github.com/krillinai/ClaweeAgent/blob/main/docs/delivery/user-guides/Clawee用户指南.md)
 - **Architecture and permissions:** [Project responsibilities](./docs/architecture.md) · [Gateway architecture](./server/docs/architecture/overview.md) · [Security and permissions](./server/docs/architecture/security-and-permissions.md)
 - **Installation and configuration:** [Local development](./server/docs/getting-started/development.md) · [Configuration reference](./server/docs/getting-started/configuration.md) · [Production deployment](./server/docs/deployment/production.md)
 - **Client integration:** [Clawee Agent](./server/docs/integration/clawee-agent.md) · [MCP upstreams](./server/docs/integration/upstream-mcp.md) · [HTTP API](./server/docs/reference/http-api.md)

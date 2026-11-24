@@ -330,7 +330,6 @@ $CLAWEE_OPS_DIR/
 
 ## 文档导航
 
-- **使用指南**：[AI Gateway 用户与管理员指南（图文）](../delivery/user-guides/AIGateway用户与管理员指南.md) · [ClaweeAgent 用户指南](https://github.com/krillinai/ClaweeAgent/blob/main/docs/delivery/user-guides/Clawee用户指南.md)
 - **架构与权限**：[项目职责](../architecture.md) · [Gateway 架构](../../server/docs/architecture/overview.md) · [安全与权限](../../server/docs/architecture/security-and-permissions.md)
 - **安装与配置**：[本地开发](../../server/docs/getting-started/development.md) · [配置参考](../../server/docs/getting-started/configuration.md) · [生产部署](../../server/docs/deployment/production.md)
 - **客户端接入**：[Clawee Agent](../../server/docs/integration/clawee-agent.md) · [MCP 上游](../../server/docs/integration/upstream-mcp.md) · [HTTP API](../../server/docs/reference/http-api.md)
